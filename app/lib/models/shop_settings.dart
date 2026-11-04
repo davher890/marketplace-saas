@@ -29,7 +29,7 @@ class ShopSettings {
     contactPhone: json['contact_phone'] as String?,
   );
 
-  Map<String, dynamic> toRow() => {
+  Map<String, dynamic> toJson() => {
     'shipping_flat_cents': shippingFlatCents,
     'free_shipping_threshold_cents': freeShippingThresholdCents,
     'contact_email': contactEmail,

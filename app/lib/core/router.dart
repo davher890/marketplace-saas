@@ -17,6 +17,7 @@ import '../features/catalog/product_screen.dart';
 import '../features/checkout/checkout_screen.dart';
 import '../features/orders/my_orders_screen.dart';
 import '../features/shell/store_shell.dart';
+import '../repositories/profile_repository.dart';
 import 'providers.dart';
 
 /// Re-runs router redirects whenever a stream emits (used for auth changes).

@@ -1,6 +1,6 @@
 import 'product.dart';
 
-/// A cart line joined with its variant and product, ready to display.
+/// A cart line with its variant and product nested, as returned by the API.
 class CartItem {
   const CartItem({
     required this.id,
@@ -15,10 +15,6 @@ class CartItem {
   final String customization;
   final ProductVariant variant;
   final Product product;
-
-  /// Columns + nested relations to request from PostgREST.
-  static const selectQuery =
-      'id, quantity, customization, product_variants(*, products(*, product_images(*)))';
 
   int get unitPriceCents => product.priceOf(variant);
   int get lineTotalCents => unitPriceCents * quantity;
@@ -46,6 +42,14 @@ class Cart {
   final List<CartItem> items;
 
   static const empty = Cart([]);
+
+  /// Parses `GET /api/cart`. Totals are recomputed from the lines; shipping
+  /// is estimated in the UI from the shop settings.
+  factory Cart.fromJson(Map<String, dynamic> json) => Cart(
+    (json['items'] as List)
+        .map((e) => CartItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 
   bool get isEmpty => items.isEmpty;
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);

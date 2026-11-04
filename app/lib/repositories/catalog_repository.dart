@@ -6,8 +6,8 @@ import '../models/category.dart';
 import '../models/product.dart';
 import '../models/shop_settings.dart';
 
-/// Read-only access to the public catalog. RLS hides inactive items from
-/// customers, while admins see everything.
+/// Read-only access to the public catalog, straight from Supabase.
+/// RLS only exposes active items; admins use the API for everything else.
 class CatalogRepository {
   CatalogRepository(this._db);
 
@@ -55,15 +55,6 @@ class CatalogRepository {
     return row == null ? null : Product.fromJson(row);
   }
 
-  Future<Product?> fetchProductById(String id) async {
-    final row = await _db
-        .from('products')
-        .select(Product.selectQuery)
-        .eq('id', id)
-        .maybeSingle();
-    return row == null ? null : Product.fromJson(row);
-  }
-
   Future<ShopSettings> fetchSettings() async {
     final row = await _db.from('shop_settings').select().maybeSingle();
     return row == null ? ShopSettings.fallback : ShopSettings.fromJson(row);
@@ -75,8 +66,6 @@ final catalogRepositoryProvider = Provider(
 );
 
 final categoriesProvider = FutureProvider<List<Category>>((ref) {
-  // Admins also see inactive categories, so refresh on auth changes.
-  ref.watch(currentUserProvider);
   return ref.watch(catalogRepositoryProvider).fetchCategories();
 });
 

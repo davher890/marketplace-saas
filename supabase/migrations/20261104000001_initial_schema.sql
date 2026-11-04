@@ -3,9 +3,11 @@
 -- Catalog (categories, products, variants, images), carts, orders and profiles.
 -- Users live in Supabase's auth.users; `profiles` extends them with app data.
 -- All money amounts are stored as integer cents (EUR) to avoid rounding issues.
+--
+-- The database only stores data: there are no functions or triggers. All the
+-- business logic (updated_at, profile creation, carts, checkout, stock, order
+-- status history...) lives in the API (`server/`).
 -- =============================================================================
-
-create extension if not exists citext;
 
 -- -----------------------------------------------------------------------------
 -- Enums
@@ -22,22 +24,7 @@ create type public.order_status as enum (
 );
 
 -- -----------------------------------------------------------------------------
--- Shared helpers
--- -----------------------------------------------------------------------------
-
--- Keeps `updated_at` columns current on every update.
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
--- -----------------------------------------------------------------------------
--- Profiles (1:1 with auth.users)
+-- Profiles (1:1 with auth.users). The API creates the row on first sign in.
 -- -----------------------------------------------------------------------------
 create table public.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
@@ -48,44 +35,6 @@ create table public.profiles (
   updated_at  timestamptz not null default now()
 );
 
-create trigger profiles_set_updated_at
-  before update on public.profiles
-  for each row execute function public.set_updated_at();
-
--- Creates a profile automatically whenever a new auth user signs up.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  insert into public.profiles (id, full_name)
-  values (new.id, new.raw_user_meta_data ->> 'full_name')
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
-
--- True when the current request belongs to an admin user.
--- SECURITY DEFINER so it can read profiles without tripping RLS recursion.
-create or replace function public.is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and role = 'admin'
-  );
-$$;
-
 -- -----------------------------------------------------------------------------
 -- Categories (two levels on the current site, but any depth is supported)
 -- -----------------------------------------------------------------------------
@@ -93,7 +42,7 @@ create table public.categories (
   id          uuid primary key default gen_random_uuid(),
   parent_id   uuid references public.categories (id) on delete set null,
   name        text not null,
-  slug        citext not null unique,
+  slug        text not null unique,
   description text,
   image_url   text,
   position    integer not null default 0,
@@ -104,10 +53,6 @@ create table public.categories (
 
 create index categories_parent_id_idx on public.categories (parent_id);
 
-create trigger categories_set_updated_at
-  before update on public.categories
-  for each row execute function public.set_updated_at();
-
 -- -----------------------------------------------------------------------------
 -- Products
 -- A product is what the customer browses. What they actually buy is a
@@ -117,7 +62,7 @@ create table public.products (
   id                uuid primary key default gen_random_uuid(),
   category_id       uuid references public.categories (id) on delete set null,
   name              text not null,
-  slug              citext not null unique,
+  slug              text not null unique,
   description       text,
   -- Default price. A variant may override it with its own price.
   base_price_cents  integer not null check (base_price_cents >= 0),
@@ -133,10 +78,6 @@ create table public.products (
 create index products_category_id_idx on public.products (category_id);
 create index products_active_idx on public.products (is_active) where is_active;
 
-create trigger products_set_updated_at
-  before update on public.products
-  for each row execute function public.set_updated_at();
-
 -- -----------------------------------------------------------------------------
 -- Product variants
 -- `options` holds the attribute combination, e.g. {"Size": "2 years", "Color": "Blue"}.
@@ -145,7 +86,7 @@ create trigger products_set_updated_at
 create table public.product_variants (
   id           uuid primary key default gen_random_uuid(),
   product_id   uuid not null references public.products (id) on delete cascade,
-  sku          citext unique,
+  sku          text unique,
   name         text not null default 'Default',
   options      jsonb not null default '{}'::jsonb check (jsonb_typeof(options) = 'object'),
   price_cents  integer check (price_cents is null or price_cents >= 0),
@@ -157,10 +98,6 @@ create table public.product_variants (
 );
 
 create index product_variants_product_id_idx on public.product_variants (product_id);
-
-create trigger product_variants_set_updated_at
-  before update on public.product_variants
-  for each row execute function public.set_updated_at();
 
 -- -----------------------------------------------------------------------------
 -- Product images (optionally tied to a specific variant)
@@ -180,7 +117,7 @@ create table public.product_images (
 create index product_images_product_id_idx on public.product_images (product_id);
 
 -- -----------------------------------------------------------------------------
--- Carts (one active cart per user; anonymous auth users can have one too)
+-- Carts (one active cart per user)
 -- -----------------------------------------------------------------------------
 create table public.carts (
   id          uuid primary key default gen_random_uuid(),
@@ -188,10 +125,6 @@ create table public.carts (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
-
-create trigger carts_set_updated_at
-  before update on public.carts
-  for each row execute function public.set_updated_at();
 
 create table public.cart_items (
   id             uuid primary key default gen_random_uuid(),
@@ -207,10 +140,6 @@ create table public.cart_items (
 );
 
 create index cart_items_cart_id_idx on public.cart_items (cart_id);
-
-create trigger cart_items_set_updated_at
-  before update on public.cart_items
-  for each row execute function public.set_updated_at();
 
 -- -----------------------------------------------------------------------------
 -- Orders
@@ -243,10 +172,6 @@ create index orders_user_id_idx on public.orders (user_id);
 create index orders_status_idx on public.orders (status);
 create index orders_created_at_idx on public.orders (created_at desc);
 
-create trigger orders_set_updated_at
-  before update on public.orders
-  for each row execute function public.set_updated_at();
-
 create table public.order_items (
   id                uuid primary key default gen_random_uuid(),
   order_id          uuid not null references public.orders (id) on delete cascade,
@@ -264,7 +189,7 @@ create table public.order_items (
 
 create index order_items_order_id_idx on public.order_items (order_id);
 
--- Keeps a timeline of every status change (who and when).
+-- Timeline of every status change (who and when), written by the API.
 create table public.order_status_history (
   id          bigint generated always as identity primary key,
   order_id    uuid not null references public.orders (id) on delete cascade,
@@ -276,33 +201,15 @@ create table public.order_status_history (
 
 create index order_status_history_order_id_idx on public.order_status_history (order_id);
 
-create or replace function public.log_order_status_change()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if tg_op = 'INSERT' then
-    insert into public.order_status_history (order_id, from_status, to_status, changed_by)
-    values (new.id, null, new.status, auth.uid());
-  elsif new.status is distinct from old.status then
-    insert into public.order_status_history (order_id, from_status, to_status, changed_by)
-    values (new.id, old.status, new.status, auth.uid());
-    if new.status = 'paid' and new.paid_at is null then
-      new.paid_at = now();
-    elsif new.status = 'shipped' and new.shipped_at is null then
-      new.shipped_at = now();
-    end if;
-  end if;
-  return new;
-end;
-$$;
-
-create trigger orders_log_status_insert
-  after insert on public.orders
-  for each row execute function public.log_order_status_change();
-
-create trigger orders_log_status_update
-  before update of status on public.orders
-  for each row execute function public.log_order_status_change();
+-- -----------------------------------------------------------------------------
+-- Shop settings (single row, edited from the admin panel)
+-- -----------------------------------------------------------------------------
+create table public.shop_settings (
+  id                             boolean primary key default true check (id), -- enforces a single row
+  shipping_flat_cents            integer not null default 495 check (shipping_flat_cents >= 0),
+  -- NULL disables free shipping.
+  free_shipping_threshold_cents  integer check (free_shipping_threshold_cents is null or free_shipping_threshold_cents >= 0),
+  contact_email                  text,
+  contact_phone                  text,
+  updated_at                     timestamptz not null default now()
+);

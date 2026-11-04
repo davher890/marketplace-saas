@@ -6,7 +6,6 @@ import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../models/product.dart';
 import '../../repositories/admin_repository.dart';
-import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
 
 class AdminProductsScreen extends ConsumerStatefulWidget {
@@ -23,7 +22,7 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
   @override
   Widget build(BuildContext context) {
     final products = ref.watch(adminProductsProvider);
-    final categories = ref.watch(categoriesProvider).value ?? const [];
+    final categories = ref.watch(adminCategoriesProvider).value ?? const [];
     String categoryName(String? id) =>
         categories.where((c) => c.id == id).firstOrNull?.name ??
         'Sin categoría';

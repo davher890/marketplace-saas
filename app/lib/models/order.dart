@@ -99,9 +99,6 @@ class Order {
   final List<OrderItem> items;
   final List<OrderStatusChange> history;
 
-  static const listSelectQuery = '*, order_items(*)';
-  static const detailSelectQuery = '*, order_items(*), order_status_history(*)';
-
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
   factory Order.fromJson(Map<String, dynamic> json) => Order(

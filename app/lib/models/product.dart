@@ -27,7 +27,7 @@ class Product {
   final List<ProductVariant> variants;
   final List<ProductImage> images;
 
-  /// Columns + nested relations to request from PostgREST.
+  /// Columns + nested relations for the public catalog reads (PostgREST).
   static const selectQuery = '*, product_variants(*), product_images(*)';
 
   String? get coverUrl => images.isEmpty ? null : images.first.url;
@@ -80,8 +80,8 @@ class Product {
     );
   }
 
-  /// Payload for insert/update (relations are saved separately).
-  Map<String, dynamic> toRow() => {
+  /// Product fields for the admin API (variants are sent alongside).
+  Map<String, dynamic> toJson() => {
     'category_id': categoryId,
     'name': name,
     'slug': slug,
@@ -141,17 +141,6 @@ class ProductVariant {
     position: json['position'] as int? ?? 0,
     isActive: json['is_active'] as bool? ?? true,
   );
-
-  Map<String, dynamic> toRow() => {
-    'product_id': productId,
-    'sku': (sku?.trim().isEmpty ?? true) ? null : sku!.trim(),
-    'name': name,
-    'options': options,
-    'price_cents': priceCents,
-    'stock': stock,
-    'position': position,
-    'is_active': isActive,
-  };
 }
 
 class ProductImage {

@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/providers.dart';
+import '../models/category.dart';
 import '../models/product.dart';
 import '../models/shop_settings.dart';
+import 'api_client.dart';
 
 /// Editable variant used by the product form before it is persisted.
 class VariantDraft {
@@ -37,123 +39,94 @@ class VariantDraft {
   int? priceCents;
   int? stock;
   bool isActive;
+
+  /// Variant payload for the admin API. Its position is its index in the list.
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'name': name,
+    'sku': sku.trim().isEmpty ? null : sku.trim(),
+    'options': options,
+    'price_cents': priceCents,
+    'stock': stock,
+    'is_active': isActive,
+  };
 }
 
-/// Write operations for the admin panel. Every call is authorized by RLS
-/// (`is_admin()`), so a non-admin user simply gets a permission error.
+/// Admin operations. The API checks the admin role on every call.
 class AdminRepository {
-  AdminRepository(this._db);
+  AdminRepository(this._api, this._db);
 
+  final ApiClient _api;
+
+  /// Only used to upload image bytes to the signed URL issued by the API.
   final SupabaseClient _db;
 
-  static const imagesBucket = 'product-images';
+  Future<List<Product>> fetchAllProducts() async =>
+      parseList(await _api.get('/api/admin/products'), Product.fromJson);
 
-  Future<List<Product>> fetchAllProducts() async {
-    final rows = await _db
-        .from('products')
-        .select(Product.selectQuery)
-        .order('updated_at', ascending: false);
-    return rows.map(Product.fromJson).toList();
+  Future<Product?> fetchProduct(String id) async {
+    try {
+      return Product.fromJson(await _api.get('/api/admin/products/$id'));
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
-  /// Creates or updates a product and syncs its variants.
-  /// Returns the product id.
-  Future<String> saveProduct({
+  /// Every category, including inactive ones.
+  Future<List<Category>> fetchAllCategories() async =>
+      parseList(await _api.get('/api/admin/categories'), Category.fromJson);
+
+  /// Creates the product (when [productId] is null) or updates it. The API
+  /// syncs the variants in the same transaction. Returns the saved product.
+  Future<Product> saveProduct({
     String? productId,
-    required Map<String, dynamic> productRow,
+    required Map<String, dynamic> product,
     required List<VariantDraft> variants,
   }) async {
-    final String id;
-    if (productId == null) {
-      final inserted = await _db
-          .from('products')
-          .insert(productRow)
-          .select('id')
-          .single();
-      id = inserted['id'] as String;
-    } else {
-      await _db.from('products').update(productRow).eq('id', productId);
-      id = productId;
-    }
-
-    // Variants removed in the form are deleted; the rest are upserted.
-    final keptIds = variants.map((v) => v.id).whereType<String>().toList();
-    var delete = _db.from('product_variants').delete().eq('product_id', id);
-    if (keptIds.isNotEmpty) {
-      delete = delete.not('id', 'in', '(${keptIds.join(',')})');
-    }
-    await delete;
-
-    for (final (index, draft) in variants.indexed) {
-      final row = ProductVariant(
-        id: draft.id ?? '',
-        productId: id,
-        name: draft.name.trim().isEmpty ? 'Default' : draft.name.trim(),
-        sku: draft.sku,
-        options: draft.options,
-        priceCents: draft.priceCents,
-        stock: draft.stock,
-        position: index,
-        isActive: draft.isActive,
-      ).toRow();
-
-      if (draft.id == null) {
-        await _db.from('product_variants').insert(row);
-      } else {
-        await _db.from('product_variants').update(row).eq('id', draft.id!);
-      }
-    }
-    return id;
-  }
-
-  Future<void> deleteProduct(String productId) async {
-    final images = await _db
-        .from('product_images')
-        .select('storage_path')
-        .eq('product_id', productId);
-    final paths = images
-        .map((row) => row['storage_path'] as String?)
-        .whereType<String>()
-        .toList();
-    if (paths.isNotEmpty) await _db.storage.from(imagesBucket).remove(paths);
-    await _db.from('products').delete().eq('id', productId);
+    final body = {
+      ...product,
+      'variants': variants.map((v) => v.toJson()).toList(),
+    };
+    final json = productId == null
+        ? await _api.post('/api/admin/products', body)
+        : await _api.put('/api/admin/products/$productId', body);
+    return Product.fromJson(json);
   }
 
   Future<void> setProductActive(String productId, bool isActive) async {
-    await _db
-        .from('products')
-        .update({'is_active': isActive})
-        .eq('id', productId);
+    await _api.patch('/api/admin/products/$productId', {'is_active': isActive});
   }
 
-  /// Uploads an image to Storage and links it to the product.
+  Future<void> deleteProduct(String productId) async {
+    await _api.delete('/api/admin/products/$productId');
+  }
+
+  /// Asks the API for a signed upload URL, uploads the file straight to
+  /// Supabase Storage, then links it to the product.
   Future<void> uploadProductImage({
     required String productId,
     required Uint8List bytes,
     required String fileName,
-    required int position,
   }) async {
-    final extension = fileName.contains('.')
-        ? fileName.split('.').last.toLowerCase()
-        : 'jpg';
-    final path =
-        '$productId/${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final upload =
+        await _api.post('/api/admin/products/$productId/images/upload-url', {
+              'file_name': fileName,
+            })
+            as Map<String, dynamic>;
+    final path = upload['path'] as String;
+
     await _db.storage
-        .from(imagesBucket)
-        .uploadBinary(
+        .from(upload['bucket'] as String)
+        .uploadBinaryToSignedUrl(
           path,
+          upload['token'] as String,
           bytes,
-          fileOptions: FileOptions(
-            contentType: 'image/$extension',
-            upsert: false,
-          ),
+          FileOptions(contentType: upload['content_type'] as String),
         );
-    final url = _db.storage.from(imagesBucket).getPublicUrl(path);
-    await _db.from('product_images').insert({
-      'product_id': productId,
-      'url': url,
+
+    await _api.post('/api/admin/products/$productId/images', {
       'storage_path': path,
-      'position': position,
     });
   }
 
@@ -161,32 +134,38 @@ class AdminRepository {
   Future<void> addProductImageUrl({
     required String productId,
     required String url,
-    required int position,
   }) async {
-    await _db.from('product_images').insert({
-      'product_id': productId,
-      'url': url,
-      'position': position,
-    });
+    await _api.post('/api/admin/products/$productId/images', {'url': url});
   }
 
   Future<void> deleteProductImage(ProductImage image) async {
-    if (image.storagePath != null) {
-      await _db.storage.from(imagesBucket).remove([image.storagePath!]);
-    }
-    await _db.from('product_images').delete().eq('id', image.id);
+    await _api.delete('/api/admin/images/${image.id}');
   }
 
-  Future<void> saveSettings(ShopSettings settings) async {
-    await _db.from('shop_settings').update(settings.toRow()).eq('id', true);
-  }
+  Future<ShopSettings> saveSettings(ShopSettings settings) async =>
+      ShopSettings.fromJson(
+        await _api.put('/api/admin/settings', settings.toJson()),
+      );
 }
 
 final adminRepositoryProvider = Provider(
-  (ref) => AdminRepository(ref.watch(supabaseProvider)),
+  (ref) => AdminRepository(
+    ref.watch(apiClientProvider),
+    ref.watch(supabaseProvider),
+  ),
 );
 
 final adminProductsProvider = FutureProvider<List<Product>>((ref) {
   ref.watch(currentUserProvider);
   return ref.watch(adminRepositoryProvider).fetchAllProducts();
 });
+
+final adminCategoriesProvider = FutureProvider<List<Category>>((ref) {
+  ref.watch(currentUserProvider);
+  return ref.watch(adminRepositoryProvider).fetchAllCategories();
+});
+
+final adminProductProvider = FutureProvider.autoDispose
+    .family<Product?, String>((ref, id) {
+      return ref.watch(adminRepositoryProvider).fetchProduct(id);
+    });

@@ -17,16 +17,3 @@ final currentUserProvider = Provider<User?>((ref) {
   ref.watch(authStateProvider);
   return ref.watch(supabaseProvider).auth.currentUser;
 });
-
-/// Whether the current user has the `admin` role in `public.profiles`.
-final isAdminProvider = FutureProvider<bool>((ref) async {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return false;
-  final row = await ref
-      .watch(supabaseProvider)
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
-  return row?['role'] == 'admin';
-});

@@ -1,20 +1,24 @@
 {
   "name": "dona-galleta",
   "private": true,
-  "description": "Doña Galleta - Vercel API (serverless functions) and build for the Flutter web app",
+  "description": "Doña Galleta - API (Vercel function) and build for the Flutter web app",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "dev:api": "node --env-file-if-exists=.env --import tsx server/dev.ts",
     "dev": "vercel dev",
     "typecheck": "tsc --noEmit",
     "build:web": "bash scripts/vercel-build.sh"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.119.0"
+    "@supabase/supabase-js": "^2.119.0",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   }
 }

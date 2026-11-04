@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/providers.dart';
 import '../models/order.dart';
@@ -21,74 +20,73 @@ class CheckoutRequest {
   final String? customerNotes;
 
   Map<String, dynamic> toJson() => {
-    'shippingName': shippingName,
-    'shippingAddress': shippingAddress.toJson(),
-    'shippingPhone': shippingPhone,
-    'contactEmail': contactEmail,
-    'customerNotes': customerNotes,
+    'shipping_name': shippingName,
+    'shipping_address': shippingAddress.toJson(),
+    'shipping_phone': shippingPhone,
+    'contact_email': contactEmail,
+    'customer_notes': customerNotes,
   };
 }
 
+/// Orders are read and changed only through the API.
 class OrderRepository {
-  OrderRepository(this._db, this._api);
+  OrderRepository(this._api);
 
-  final SupabaseClient _db;
   final ApiClient _api;
 
-  /// Places the order through the Vercel API, which runs `place_order` in
-  /// Supabase (prices, stock and shipping are computed server-side).
+  /// Prices, stock and shipping are computed by the API, never by the app.
   Future<Order> checkout(CheckoutRequest request) async {
     final json = await _api.post('/api/checkout', request.toJson());
-    return Order.fromJson(json['order'] as Map<String, dynamic>);
+    return Order.fromJson((json as Map<String, dynamic>)['order']);
   }
 
-  /// Orders visible to the current user (all orders for admins, via RLS).
-  Future<List<Order>> fetchOrders({OrderStatus? status, String? userId}) async {
-    var query = _db.from('orders').select(Order.listSelectQuery);
-    if (status != null) query = query.eq('status', status.name);
-    if (userId != null) query = query.eq('user_id', userId);
-    final rows = await query.order('created_at', ascending: false);
-    return rows.map(Order.fromJson).toList();
-  }
+  /// The current customer's own orders.
+  Future<List<Order>> fetchMyOrders() async =>
+      parseList(await _api.get('/api/orders'), Order.fromJson);
 
+  /// Every order (admin only), optionally filtered by status.
+  Future<List<Order>> fetchAllOrders({OrderStatus? status}) async => parseList(
+    await _api.get(
+      '/api/admin/orders',
+      query: status == null ? null : {'status': status.name},
+    ),
+    Order.fromJson,
+  );
+
+  /// Customers get their own orders; admins any order.
   Future<Order?> fetchOrder(String id) async {
-    final row = await _db
-        .from('orders')
-        .select(Order.detailSelectQuery)
-        .eq('id', id)
-        .maybeSingle();
-    return row == null ? null : Order.fromJson(row);
+    try {
+      return Order.fromJson(await _api.get('/api/orders/$id'));
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
-  Future<void> cancel(String orderId) async {
-    await _db.rpc('cancel_order', params: {'p_order_id': orderId});
-  }
+  Future<Order> cancel(String orderId) async =>
+      Order.fromJson(await _api.post('/api/orders/$orderId/cancel'));
 
-  /// Admin only (enforced by RLS).
-  Future<void> updateStatus(String orderId, OrderStatus status) async {
-    // Cancelling goes through the SQL function so stock is restored.
-    if (status == OrderStatus.cancelled) return cancel(orderId);
-    await _db.from('orders').update({'status': status.name}).eq('id', orderId);
-  }
+  /// Admin only. Cancelling also restores stock.
+  Future<Order> updateStatus(String orderId, OrderStatus status) async =>
+      Order.fromJson(
+        await _api.patch('/api/admin/orders/$orderId', {'status': status.name}),
+      );
 
-  /// Admin only (enforced by RLS).
-  Future<void> updateAdminNotes(String orderId, String notes) async {
-    await _db.from('orders').update({'admin_notes': notes}).eq('id', orderId);
-  }
+  /// Admin only.
+  Future<Order> updateAdminNotes(String orderId, String notes) async =>
+      Order.fromJson(
+        await _api.patch('/api/admin/orders/$orderId', {'admin_notes': notes}),
+      );
 }
 
 final orderRepositoryProvider = Provider(
-  (ref) => OrderRepository(
-    ref.watch(supabaseProvider),
-    ref.watch(apiClientProvider),
-  ),
+  (ref) => OrderRepository(ref.watch(apiClientProvider)),
 );
 
 /// Current customer's own orders.
 final myOrdersProvider = FutureProvider<List<Order>>((ref) {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return [];
-  return ref.watch(orderRepositoryProvider).fetchOrders(userId: user.id);
+  if (ref.watch(currentUserProvider) == null) return [];
+  return ref.watch(orderRepositoryProvider).fetchMyOrders();
 });
 
 /// All orders for the admin panel, optionally filtered by status.
@@ -96,7 +94,7 @@ final adminOrdersProvider = FutureProvider.family<List<Order>, OrderStatus?>((
   ref,
   status,
 ) {
-  return ref.watch(orderRepositoryProvider).fetchOrders(status: status);
+  return ref.watch(orderRepositoryProvider).fetchAllOrders(status: status);
 });
 
 final orderProvider = FutureProvider.family<Order?, String>((ref, id) {

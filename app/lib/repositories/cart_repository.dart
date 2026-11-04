@@ -1,65 +1,45 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/providers.dart';
 import '../models/cart.dart';
+import 'api_client.dart';
 
-/// The cart lives in Supabase (`carts` / `cart_items`), so it is shared
-/// between the web and the Android app for the same user.
+/// The cart is stored server-side (one per user), so it is shared between the
+/// web and the Android app. Every call returns the updated cart.
 class CartRepository {
-  CartRepository(this._db);
+  CartRepository(this._api);
 
-  final SupabaseClient _db;
+  final ApiClient _api;
 
-  Future<Cart> fetchCart() async {
-    final user = _db.auth.currentUser;
-    if (user == null) return Cart.empty;
+  Future<Cart> fetchCart() async => _parse(await _api.get('/api/cart'));
 
-    final cart = await _db
-        .from('carts')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-    if (cart == null) return Cart.empty;
-
-    final rows = await _db
-        .from('cart_items')
-        .select(CartItem.selectQuery)
-        .eq('cart_id', cart['id'] as String)
-        .order('created_at', ascending: true);
-    return Cart(rows.map(CartItem.fromJson).toList());
-  }
-
-  Future<void> add(
+  Future<Cart> add(
     String variantId, {
     int quantity = 1,
     String customization = '',
-  }) async {
-    await _db.rpc(
-      'add_to_cart',
-      params: {
-        'p_variant_id': variantId,
-        'p_quantity': quantity,
-        'p_customization': customization,
-      },
-    );
-  }
+  }) async => _parse(
+    await _api.post('/api/cart/items', {
+      'variant_id': variantId,
+      'quantity': quantity,
+      'customization': customization,
+    }),
+  );
 
-  Future<void> updateQuantity(String itemId, int quantity) async {
-    if (quantity <= 0) return remove(itemId);
-    await _db
-        .from('cart_items')
-        .update({'quantity': quantity})
-        .eq('id', itemId);
-  }
+  /// A quantity of 0 removes the line.
+  Future<Cart> updateQuantity(String itemId, int quantity) async => _parse(
+    await _api.patch('/api/cart/items/$itemId', {
+      'quantity': quantity < 0 ? 0 : quantity,
+    }),
+  );
 
-  Future<void> remove(String itemId) async {
-    await _db.from('cart_items').delete().eq('id', itemId);
-  }
+  Future<Cart> remove(String itemId) async =>
+      _parse(await _api.delete('/api/cart/items/$itemId'));
+
+  Cart _parse(dynamic json) => Cart.fromJson(json as Map<String, dynamic>);
 }
 
 final cartRepositoryProvider = Provider(
-  (ref) => CartRepository(ref.watch(supabaseProvider)),
+  (ref) => CartRepository(ref.watch(apiClientProvider)),
 );
 
 /// Current user's cart. Mutations go through the notifier so the UI refreshes.
@@ -67,32 +47,32 @@ class CartNotifier extends AsyncNotifier<Cart> {
   CartRepository get _repo => ref.read(cartRepositoryProvider);
 
   @override
-  Future<Cart> build() {
-    ref.watch(currentUserProvider); // Reload when the user changes.
-    return ref.read(cartRepositoryProvider).fetchCart();
+  Future<Cart> build() async {
+    // Reload when the user changes; signed-out users have an empty cart.
+    if (ref.watch(currentUserProvider) == null) return Cart.empty;
+    return _repo.fetchCart();
   }
 
   Future<void> add(
     String variantId, {
     int quantity = 1,
     String customization = '',
-  }) => _mutate(
-    () =>
-        _repo.add(variantId, quantity: quantity, customization: customization),
-  );
-
-  Future<void> updateQuantity(String itemId, int quantity) =>
-      _mutate(() => _repo.updateQuantity(itemId, quantity));
-
-  Future<void> remove(String itemId) => _mutate(() => _repo.remove(itemId));
-
-  Future<void> reload() async {
-    state = await AsyncValue.guard(_repo.fetchCart);
+  }) async {
+    state = AsyncData(
+      await _repo.add(
+        variantId,
+        quantity: quantity,
+        customization: customization,
+      ),
+    );
   }
 
-  Future<void> _mutate(Future<void> Function() action) async {
-    await action();
-    await reload();
+  Future<void> updateQuantity(String itemId, int quantity) async {
+    state = AsyncData(await _repo.updateQuantity(itemId, quantity));
+  }
+
+  Future<void> remove(String itemId) async {
+    state = AsyncData(await _repo.remove(itemId));
   }
 }
 

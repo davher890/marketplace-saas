@@ -20,17 +20,17 @@ class ProductFormScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final categories = ref.watch(categoriesProvider);
+    final categories = ref.watch(adminCategoriesProvider);
     if (productId == null) {
       return AsyncView(
         value: categories,
         builder: (cats) => _ProductForm(product: null, categories: cats),
       );
     }
-    final product = ref.watch(_productForEditProvider(productId!));
+    final product = ref.watch(adminProductProvider(productId!));
     return AsyncView(
       value: product,
-      onRetry: () => ref.invalidate(_productForEditProvider(productId!)),
+      onRetry: () => ref.invalidate(adminProductProvider(productId!)),
       builder: (product) => AsyncView(
         value: categories,
         builder: (cats) => product == null
@@ -48,11 +48,6 @@ class ProductFormScreen extends ConsumerWidget {
     );
   }
 }
-
-final _productForEditProvider = FutureProvider.autoDispose
-    .family<Product?, String>((ref, id) {
-      return ref.watch(catalogRepositoryProvider).fetchProductById(id);
-    });
 
 /// Turns "Cojín Nube 30x50" into "cojin-nube-30x50".
 String slugify(String input) {
@@ -171,12 +166,13 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
           : null,
       isActive: _isActive,
       isFeatured: _isFeatured,
-    ).toRow();
+    ).toJson();
 
     try {
-      final id = await ref
+      final saved = await ref
           .read(adminRepositoryProvider)
-          .saveProduct(productId: _p?.id, productRow: row, variants: drafts);
+          .saveProduct(productId: _p?.id, product: row, variants: drafts);
+      final id = saved.id;
       _invalidateCatalog(id);
       if (!mounted) return;
       showMessage(context, 'Producto guardado');
@@ -191,7 +187,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
 
   void _invalidateCatalog(String productId) {
     ref.invalidate(adminProductsProvider);
-    ref.invalidate(_productForEditProvider(productId));
+    ref.invalidate(adminProductProvider(productId));
     ref.invalidate(featuredProductsProvider);
     ref.invalidate(categoryProductsProvider);
     ref.invalidate(productBySlugProvider);
@@ -622,13 +618,11 @@ class _ImagesEditorState extends ConsumerState<_ImagesEditor> {
     if (files.isEmpty) return;
     await _run(() async {
       final repo = ref.read(adminRepositoryProvider);
-      var position = widget.product.images.length;
       for (final file in files) {
         await repo.uploadProductImage(
           productId: widget.product.id,
           bytes: await file.readAsBytes(),
           fileName: file.name,
-          position: position++,
         );
       }
     });
@@ -661,11 +655,7 @@ class _ImagesEditorState extends ConsumerState<_ImagesEditor> {
     await _run(
       () => ref
           .read(adminRepositoryProvider)
-          .addProductImageUrl(
-            productId: widget.product.id,
-            url: url,
-            position: widget.product.images.length,
-          ),
+          .addProductImageUrl(productId: widget.product.id, url: url),
     );
   }
 

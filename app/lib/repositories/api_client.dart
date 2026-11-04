@@ -18,43 +18,69 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// Thin client for the Vercel serverless API (`/api/*`).
-/// Sends the Supabase access token so the API acts on behalf of the user.
+/// Client for the Vercel API (`/api/*`), where all the business logic lives.
+/// Sends the Supabase access token so the API knows who is calling.
 class ApiClient {
-  ApiClient(this._db, {http.Client? httpClient})
-    : _http = httpClient ?? http.Client();
+  ApiClient(this._db, {http.Client? httpClient, String? baseUrl})
+    : _http = httpClient ?? http.Client(),
+      _baseUrl = baseUrl ?? Env.apiBaseUrl;
 
   final SupabaseClient _db;
   final http.Client _http;
 
-  Uri _uri(String path) {
-    if (Env.apiBaseUrl.isNotEmpty) return Uri.parse('${Env.apiBaseUrl}$path');
-    if (kIsWeb) return Uri.base.resolve(path); // Same origin as the web app.
-    throw const ApiException('API_BASE_URL is not configured');
+  /// Empty on web to call the API on the app's own origin.
+  final String _baseUrl;
+
+  Uri _uri(String path, Map<String, String>? query) {
+    final Uri base;
+    if (_baseUrl.isNotEmpty) {
+      base = Uri.parse('$_baseUrl$path');
+    } else if (kIsWeb) {
+      base = Uri.base.resolve(path); // Same origin as the web app.
+    } else {
+      throw const ApiException('API_BASE_URL is not configured');
+    }
+    return query == null || query.isEmpty
+        ? base
+        : base.replace(queryParameters: query);
   }
 
-  Future<Map<String, dynamic>> post(
-    String path,
-    Map<String, dynamic> body,
-  ) async {
+  Future<dynamic> get(String path, {Map<String, String>? query}) =>
+      _send('GET', path, query: query);
+
+  Future<dynamic> post(String path, [Object? body]) =>
+      _send('POST', path, body: body);
+
+  Future<dynamic> put(String path, Object? body) =>
+      _send('PUT', path, body: body);
+
+  Future<dynamic> patch(String path, Object? body) =>
+      _send('PATCH', path, body: body);
+
+  Future<dynamic> delete(String path) => _send('DELETE', path);
+
+  /// Sends the request and returns the decoded JSON body (`null` for 204).
+  Future<dynamic> _send(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) async {
     final token = _db.auth.currentSession?.accessToken;
-    final response = await _http.post(
-      _uri(path),
-      headers: {
+    final request = http.Request(method, _uri(path, query))
+      ..headers.addAll({
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode(body),
-    );
+      });
+    if (body != null) request.body = jsonEncode(body);
 
-    final decoded = response.body.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(response.body) as Map<String, dynamic>;
+    final response = await http.Response.fromStream(await _http.send(request));
+    final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
 
     if (response.statusCode >= 400) {
+      final error = decoded is Map ? decoded['error'] as String? : null;
       throw ApiException(
-        decoded['error'] as String? ??
-            'Unexpected error (${response.statusCode})',
+        error ?? 'Unexpected error (${response.statusCode})',
         statusCode: response.statusCode,
       );
     }
@@ -65,3 +91,7 @@ class ApiClient {
 final apiClientProvider = Provider(
   (ref) => ApiClient(ref.watch(supabaseProvider)),
 );
+
+/// Casts a decoded JSON list into typed models.
+List<T> parseList<T>(dynamic json, T Function(Map<String, dynamic>) fromJson) =>
+    (json as List).map((e) => fromJson(e as Map<String, dynamic>)).toList();
