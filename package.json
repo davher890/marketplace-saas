@@ -1,22 +1,20 @@
 {
-  "name": "miss_galleta_web",
-  "version": "1.0.0",
-  "description": "Doña Galleta",
-  "main": "server.js",
-  "scripts": {
-    "start": "node ./bin/www",
-    "restart": "nodemon ./bin/www"
+  "name": "dona-galleta",
+  "private": true,
+  "description": "Doña Galleta - Vercel API (serverless functions) and build for the Flutter web app",
+  "engines": {
+    "node": ">=20"
   },
-  "author": "",
-  "license": "ISC",
+  "scripts": {
+    "dev": "vercel dev",
+    "typecheck": "tsc --noEmit",
+    "build:web": "bash scripts/vercel-build.sh"
+  },
   "dependencies": {
-    "body-parser": "^1.15.2",
-    "cookie-parser": "^1.4.3",
-    "debug": "^2.2.0",
-    "express": "^4.14.0",
-    "firebase": "^3.5.3",
-    "grunt": "^1.0.1",
-    "jade": "^1.11.0",
-    "jquery": "^3.1.1"
+    "@supabase/supabase-js": "^2.119.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
   }
 }
