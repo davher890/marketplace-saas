@@ -1,4 +1,11 @@
-/node_modules
-.idea
-.c9
-*~
+node_modules/
+.vercel/
+.env
+.env.*
+!.env.example
+.flutter-sdk/
+.DS_Store
+.idea/
+.vscode/
+supabase/.temp/
+supabase/.branches/
