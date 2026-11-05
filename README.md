@@ -160,11 +160,18 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…03_rls_policies.sql`: Row Level Security for every table.
 
    The last two are safe to run more than once.
-3. Authentication → URL Configuration: set **Site URL** to the deployed web app and
-   add these **Redirect URLs**, so password recovery emails open the app's
-   `/reset-password` page:
-   - `http://localhost:8000/**`
-   - `https://<your-vercel-domain>/**`
+3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
+   confirmation, password recovery) open the app:
+   - **Site URL**: the deployed web app, e.g. `https://<your-vercel-domain>`. It is
+     `http://localhost:3000` by default, and links that don't name an allowed
+     address (e.g. accounts created from Android) go there.
+   - **Redirect URLs**: `http://localhost:8000/**` and `https://<your-vercel-domain>/**`.
+     The web app asks for its own address (`/` after confirming an account,
+     `/reset-password` for a new password); Supabase only honors it if it's listed.
+
+   Open the link in the same browser where you signed up or asked for it: the app
+   then signs you in. In another browser the account is still confirmed, but you
+   have to sign in by hand.
 4. Optional: load sample data with `supabase/seed.sql`.
 5. Sign up in the app, then make yourself admin in the SQL editor:
    ```sql

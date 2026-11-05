@@ -58,6 +58,14 @@ String? validatePhone(String? value) {
   return null;
 }
 
+/// Where links in Supabase Auth emails (sign-up confirmation, password
+/// recovery) should land. On the web it's this same site, so local and
+/// deployed builds each get their own links; elsewhere `null` lets Supabase
+/// use its Site URL (the deployed web app). The URL must be listed in
+/// Supabase → Authentication → URL Configuration → Redirect URLs.
+String? authRedirectUrl([String path = '']) =>
+    kIsWeb ? '${Uri.base.origin}$path' : null;
+
 /// Minimum length enforced by Supabase Auth by default.
 const minPasswordLength = 6;
 
@@ -102,7 +110,7 @@ class ProfileRepository {
   /// `/reset-password` of this same site; elsewhere Supabase's Site URL.
   Future<void> sendPasswordReset(String email) => _auth.resetPasswordForEmail(
     email,
-    redirectTo: kIsWeb ? '${Uri.base.origin}/reset-password' : null,
+    redirectTo: authRedirectUrl('/reset-password'),
   );
 }
 
