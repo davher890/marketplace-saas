@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/providers.dart';
 import 'api_client.dart';
@@ -41,3 +43,72 @@ final isAdminProvider = FutureProvider<bool>((ref) async {
   final profile = await ref.watch(profileProvider.future);
   return profile?.isAdmin ?? false;
 });
+
+/// Phone numbers accepted by the API: digits, spaces, `+`, `-`, `(`, `)`,
+/// with 6 to 15 digits.
+String? validatePhone(String? value) {
+  final phone = value?.trim() ?? '';
+  if (phone.isEmpty) return null; // Optional.
+  final digits = phone.replaceAll(RegExp(r'\D'), '').length;
+  if (!RegExp(r'^\+?[0-9 ()-]+$').hasMatch(phone) ||
+      digits < 6 ||
+      digits > 15) {
+    return 'Teléfono no válido';
+  }
+  return null;
+}
+
+/// Minimum length enforced by Supabase Auth by default.
+const minPasswordLength = 6;
+
+/// Profile edits go through the API; password changes use Supabase Auth.
+/// The email is the account identity and can't be changed from the app.
+class ProfileRepository {
+  ProfileRepository(this._api, this._auth);
+
+  final ApiClient _api;
+  final GoTrueClient _auth;
+
+  Future<Profile> updateProfile({String? fullName, String? phone}) async {
+    final json = await _api.patch('/api/me', {
+      'full_name': fullName,
+      'phone': phone,
+    });
+    return Profile.fromJson(json as Map<String, dynamic>);
+  }
+
+  /// Checks the current password before setting a new one, so an unattended
+  /// signed-in device can't be used to take over the account.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final email = _auth.currentUser?.email;
+    if (email == null) throw const AuthException('No hay sesión iniciada');
+    try {
+      await _auth.signInWithPassword(email: email, password: currentPassword);
+    } on AuthException {
+      throw const AuthException('La contraseña actual no es correcta');
+    }
+    await setNewPassword(newPassword);
+  }
+
+  /// Sets the password of the signed-in user, e.g. after opening a
+  /// password recovery link.
+  Future<void> setNewPassword(String newPassword) =>
+      _auth.updateUser(UserAttributes(password: newPassword));
+
+  /// Emails a link to choose a new password. On the web it opens
+  /// `/reset-password` of this same site; elsewhere Supabase's Site URL.
+  Future<void> sendPasswordReset(String email) => _auth.resetPasswordForEmail(
+    email,
+    redirectTo: kIsWeb ? '${Uri.base.origin}/reset-password' : null,
+  );
+}
+
+final profileRepositoryProvider = Provider(
+  (ref) => ProfileRepository(
+    ref.watch(apiClientProvider),
+    ref.watch(supabaseProvider).auth,
+  ),
+);

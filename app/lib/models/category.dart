@@ -8,6 +8,7 @@ class Category {
     this.imageUrl,
     this.position = 0,
     this.isActive = true,
+    this.productCount = 0,
   });
 
   final String id;
@@ -18,6 +19,9 @@ class Category {
   final String? imageUrl;
   final int position;
   final bool isActive;
+
+  /// Products directly in this category (only filled by the admin API).
+  final int productCount;
 
   bool get isRoot => parentId == null;
 
@@ -30,6 +34,7 @@ class Category {
     imageUrl: json['image_url'] as String?,
     position: json['position'] as int? ?? 0,
     isActive: json['is_active'] as bool? ?? true,
+    productCount: json['product_count'] as int? ?? 0,
   );
 }
 

@@ -20,6 +20,11 @@ class AdminShell extends StatelessWidget {
       icon: Icons.inventory_2_outlined,
       label: 'Productos',
     ),
+    (
+      path: '/admin/categories',
+      icon: Icons.category_outlined,
+      label: 'Categorías',
+    ),
     (path: '/admin/settings', icon: Icons.settings_outlined, label: 'Ajustes'),
   ];
 
@@ -28,7 +33,7 @@ class AdminShell extends StatelessWidget {
     final path = GoRouterState.of(context).uri.path;
     final selected = _destinations
         .indexWhere((d) => path.startsWith(d.path))
-        .clamp(0, 2);
+        .clamp(0, _destinations.length - 1);
     final isWide = MediaQuery.sizeOf(context).width >= 800;
 
     void onSelect(int index) => context.go(_destinations[index].path);

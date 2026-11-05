@@ -77,6 +77,46 @@ class AdminRepository {
   Future<List<Category>> fetchAllCategories() async =>
       parseList(await _api.get('/api/admin/categories'), Category.fromJson);
 
+  /// Creates the category (when [categoryId] is null) or updates it.
+  Future<Category> saveCategory({
+    String? categoryId,
+    required String name,
+    required String slug,
+    String? parentId,
+    String? description,
+    bool isActive = true,
+  }) async {
+    final body = {
+      'name': name,
+      'slug': slug,
+      'parent_id': parentId,
+      'description': description,
+      'is_active': isActive,
+    };
+    final json = categoryId == null
+        ? await _api.post('/api/admin/categories', body)
+        : await _api.put('/api/admin/categories/$categoryId', body);
+    return Category.fromJson(json);
+  }
+
+  Future<void> setCategoryActive(String categoryId, bool isActive) async {
+    await _api.patch('/api/admin/categories/$categoryId', {
+      'is_active': isActive,
+    });
+  }
+
+  /// Moves the category one place up or down among its siblings.
+  Future<void> moveCategory(String categoryId, {required bool up}) async {
+    await _api.post('/api/admin/categories/$categoryId/move', {
+      'direction': up ? 'up' : 'down',
+    });
+  }
+
+  /// Refused by the API (409) while the category has products or sub-categories.
+  Future<void> deleteCategory(String categoryId) async {
+    await _api.delete('/api/admin/categories/$categoryId');
+  }
+
   /// Creates the product (when [productId] is null) or updates it. The API
   /// syncs the variants in the same transaction. Returns the saved product.
   Future<Product> saveProduct({

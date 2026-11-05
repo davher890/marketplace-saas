@@ -1,5 +1,5 @@
 import 'package:dona_galleta/core/money.dart';
-import 'package:dona_galleta/features/admin/product_form_screen.dart';
+import 'package:dona_galleta/core/slug.dart';
 import 'package:dona_galleta/models/cart.dart';
 import 'package:dona_galleta/models/product.dart';
 import 'package:dona_galleta/models/shop_settings.dart';

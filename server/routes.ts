@@ -1,12 +1,13 @@
 import { isAdmin, requireAdmin, requireUser } from './auth';
-import { db } from './db';
 import { readBody, Reply } from './http';
 import { Router } from './router';
 import * as cart from './services/cart';
+import * as categories from './services/categories';
 import * as orders from './services/orders';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
 import * as settings from './services/settings';
+import { supabaseAdmin } from './supabase';
 
 /**
  * Every API endpoint. Request and response bodies use snake_case, matching the
@@ -17,8 +18,9 @@ export const router = new Router()
   .get('/api/health', async () => ({
     status: 'ok',
     configured: {
-      database: Boolean(process.env.DATABASE_URL),
-      supabase: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY),
+      supabase_url: Boolean(process.env.SUPABASE_URL),
+      publishable_key: Boolean(process.env.SUPABASE_PUBLISHABLE_KEY),
+      secret_key: Boolean(process.env.SUPABASE_SECRET_KEY),
     },
   }))
 
@@ -30,18 +32,18 @@ export const router = new Router()
   })
 
   // --- Cart -------------------------------------------------------------------
-  .get('/api/cart', async ({ request }) => cart.getCart((await requireUser(request)).id))
+  .get('/api/cart', async ({ request }) => cart.getCart(await requireUser(request)))
   .post('/api/cart/items', async ({ request }) => {
     const user = await requireUser(request);
-    return cart.addItem(user.id, await readBody(request, cart.addItemSchema));
+    return cart.addItem(user, await readBody(request, cart.addItemSchema));
   })
   .patch('/api/cart/items/:id', async ({ request, params }) => {
     const user = await requireUser(request);
     const { quantity } = await readBody(request, cart.updateItemSchema);
-    return cart.updateItem(user.id, params.id, quantity);
+    return cart.updateItem(user, params.id, quantity);
   })
   .delete('/api/cart/items/:id', async ({ request, params }) =>
-    cart.removeItem((await requireUser(request)).id, params.id),
+    cart.removeItem(await requireUser(request), params.id),
   )
 
   // --- Checkout and customer orders -----------------------------------------
@@ -50,20 +52,23 @@ export const router = new Router()
     const order = await orders.placeOrder(user, await readBody(request, orders.checkoutSchema));
     return new Reply({ order }, 201);
   })
-  .get('/api/orders', async ({ request }) => orders.listOrders({ userId: (await requireUser(request)).id }))
+  .get('/api/orders', async ({ request }) => {
+    const user = await requireUser(request);
+    return orders.listOrders(user.db, { userId: user.id });
+  })
   .get('/api/orders/:id', async ({ request, params }) => {
     const user = await requireUser(request);
-    return orders.getOrderFor(user, params.id, await isAdmin(user.id));
+    return orders.getOrderFor(user, params.id, await isAdmin(user));
   })
   .post('/api/orders/:id/cancel', async ({ request, params }) => {
     const user = await requireUser(request);
-    return orders.cancelOrder(user, params.id, await isAdmin(user.id));
+    return orders.cancelOrder(user, params.id, await isAdmin(user));
   })
 
   // --- Admin: orders --------------------------------------------------------
   .get('/api/admin/orders', async ({ request, query }) => {
     await requireAdmin(request);
-    return orders.listOrders({ status: orders.parseStatus(query.get('status')) });
+    return orders.listOrders(supabaseAdmin(), { status: orders.parseStatus(query.get('status')) });
   })
   .patch('/api/admin/orders/:id', async ({ request, params }) => {
     const admin = await requireAdmin(request);
@@ -73,7 +78,31 @@ export const router = new Router()
   // --- Admin: catalog -------------------------------------------------------
   .get('/api/admin/categories', async ({ request }) => {
     await requireAdmin(request);
-    return products.listCategories();
+    return categories.listCategories();
+  })
+  .post('/api/admin/categories', async ({ request }) => {
+    await requireAdmin(request);
+    const category = await categories.createCategory(await readBody(request, categories.categorySchema));
+    return new Reply(category, 201);
+  })
+  .put('/api/admin/categories/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    return categories.updateCategory(params.id, await readBody(request, categories.categorySchema));
+  })
+  .patch('/api/admin/categories/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    const { is_active } = await readBody(request, categories.patchCategorySchema);
+    return categories.setCategoryActive(params.id, is_active);
+  })
+  .post('/api/admin/categories/:id/move', async ({ request, params }) => {
+    await requireAdmin(request);
+    const { direction } = await readBody(request, categories.moveCategorySchema);
+    return categories.moveCategory(params.id, direction);
+  })
+  .delete('/api/admin/categories/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    await categories.deleteCategory(params.id);
+    return new Reply(null, 204);
   })
   .get('/api/admin/products', async ({ request }) => {
     await requireAdmin(request);
@@ -86,7 +115,7 @@ export const router = new Router()
   })
   .get('/api/admin/products/:id', async ({ request, params }) => {
     await requireAdmin(request);
-    return products.getProduct(db(), params.id);
+    return products.getProduct(params.id);
   })
   .put('/api/admin/products/:id', async ({ request, params }) => {
     await requireAdmin(request);

@@ -24,7 +24,7 @@ export class Reply {
 
 /**
  * Comma separated list of origins allowed to call the API from a browser on a
- * different origin (e.g. `http://localhost:5000` while running `flutter run -d chrome`).
+ * different origin (e.g. `http://localhost:8000` while running `flutter run -d chrome`).
  * The deployed web app is same-origin and the Android app is not subject to CORS.
  */
 function allowedOrigins(): string[] {
@@ -75,13 +75,18 @@ export async function readBody<T>(request: Request, schema: z.ZodType<T>): Promi
   return result.data;
 }
 
-/** Postgres error codes that are caused by bad input rather than a server bug. */
+/**
+ * Postgres / PostgREST error codes (as returned by supabase-js) that are caused
+ * by the request rather than by a server bug.
+ */
 const postgresErrorStatus: Record<string, [number, string]> = {
   '22P02': [400, 'Invalid identifier or value'],
   '23502': [400, 'A required field is missing'],
   '23503': [400, 'A referenced record does not exist'],
   '23505': [409, 'A record with the same unique value already exists'],
   '23514': [400, 'A value is out of the allowed range'],
+  '42501': [403, 'Not allowed'], // blocked by RLS or column privileges
+  PGRST116: [404, 'Not found'], // .single() matched no rows
 };
 
 /** Converts any thrown error into a JSON error response. */
@@ -92,8 +97,8 @@ export function errorResponse(request: Request, error: unknown): Response {
   const code = (error as { code?: string } | null)?.code;
   if (code && postgresErrorStatus[code]) {
     const [status, message] = postgresErrorStatus[code];
-    const detail = (error as { detail?: string }).detail;
-    return json(request, { error: detail ? `${message}: ${detail}` : message }, status);
+    const details = (error as { details?: string | null }).details;
+    return json(request, { error: details ? `${message}: ${details}` : message }, status);
   }
   console.error(error);
   return json(request, { error: 'Internal server error' }, 500);

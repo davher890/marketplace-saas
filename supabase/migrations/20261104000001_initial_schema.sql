@@ -6,7 +6,7 @@
 --
 -- The database only stores data: there are no functions or triggers. All the
 -- business logic (updated_at, profile creation, carts, checkout, stock, order
--- status history...) lives in the API (`server/`).
+-- status history...) lives in the API (`server/`), which uses supabase-js.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------

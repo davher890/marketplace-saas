@@ -45,16 +45,30 @@ class StoreShell extends ConsumerWidget {
             : null,
       ),
       drawer: isWide ? null : _CategoryDrawer(tree: tree),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(child: child),
-          // Keeps the footer at the bottom on short pages.
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: Align(alignment: Alignment.bottomCenter, child: _Footer()),
-          ),
-        ],
-      ),
+      // `child` is the nested Navigator of the ShellRoute: it must fill the
+      // body. Each page scrolls on its own inside a [StorePage].
+      body: child,
+    );
+  }
+}
+
+/// Scrollable page body with the footer, used by every storefront route.
+class StorePage extends StatelessWidget {
+  const StorePage({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: child),
+        // Keeps the footer at the bottom on short pages.
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: Align(alignment: Alignment.bottomCenter, child: _Footer()),
+        ),
+      ],
     );
   }
 }
@@ -237,6 +251,11 @@ class _AccountButton extends ConsumerWidget {
 
     return MenuAnchor(
       menuChildren: [
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.person_outline),
+          onPressed: () => context.go('/profile'),
+          child: const Text('Mi perfil'),
+        ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.receipt_long_outlined),
           onPressed: () => context.go('/orders'),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/providers.dart';
+import '../../repositories/profile_repository.dart';
 import '../../widgets/common.dart';
 
 /// Email + password sign in / sign up using Supabase Auth.
@@ -72,7 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
     try {
-      await ref.read(supabaseProvider).auth.resetPasswordForEmail(email);
+      await ref.read(profileRepositoryProvider).sendPasswordReset(email);
       if (mounted) {
         showMessage(
           context,

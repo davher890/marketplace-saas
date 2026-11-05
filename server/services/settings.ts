@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { db, type Db } from '../db';
+import { check, now, supabase, supabaseAdmin } from '../supabase';
 
 export interface ShopSettings {
   shipping_flat_cents: number;
@@ -9,6 +9,8 @@ export interface ShopSettings {
   contact_phone: string | null;
 }
 
+const columns = 'shipping_flat_cents, free_shipping_threshold_cents, contact_email, contact_phone';
+
 const defaults: ShopSettings = {
   shipping_flat_cents: 0,
   free_shipping_threshold_cents: null,
@@ -16,13 +18,11 @@ const defaults: ShopSettings = {
   contact_phone: null,
 };
 
-export async function getSettings(sql: Db = db()): Promise<ShopSettings> {
-  const [row] = await sql<ShopSettings[]>`
-    select shipping_flat_cents, free_shipping_threshold_cents, contact_email, contact_phone
-    from shop_settings
-    limit 1
-  `;
-  return row ?? defaults;
+/** Public settings (readable by anyone through RLS). */
+export async function getSettings(): Promise<ShopSettings> {
+  const { data, error } = await supabase().from('shop_settings').select(columns).limit(1).maybeSingle();
+  check(error);
+  return (data as ShopSettings | null) ?? defaults;
 }
 
 /** Shipping cost for a subtotal: free above the threshold, flat rate otherwise. */
@@ -41,23 +41,21 @@ export const settingsSchema = z.object({
   contact_phone: z.string().trim().max(40).nullable(),
 });
 
+/** Admin only (checked by the route); written with the service-role client. */
 export async function updateSettings(input: z.infer<typeof settingsSchema>): Promise<ShopSettings> {
-  const sql = db();
-  const values = {
-    id: true,
-    shipping_flat_cents: input.shipping_flat_cents,
-    free_shipping_threshold_cents: input.free_shipping_threshold_cents,
-    contact_email: input.contact_email || null,
-    contact_phone: input.contact_phone || null,
-  };
-  await sql`
-    insert into shop_settings ${sql(values)}
-    on conflict (id) do update set
-      shipping_flat_cents = excluded.shipping_flat_cents,
-      free_shipping_threshold_cents = excluded.free_shipping_threshold_cents,
-      contact_email = excluded.contact_email,
-      contact_phone = excluded.contact_phone,
-      updated_at = now()
-  `;
+  const { error } = await supabaseAdmin()
+    .from('shop_settings')
+    .upsert(
+      {
+        id: true,
+        shipping_flat_cents: input.shipping_flat_cents,
+        free_shipping_threshold_cents: input.free_shipping_threshold_cents,
+        contact_email: input.contact_email || null,
+        contact_phone: input.contact_phone || null,
+        updated_at: now(),
+      },
+      { onConflict: 'id' },
+    );
+  check(error);
   return getSettings();
 }
