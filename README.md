@@ -50,6 +50,23 @@ flutter run -d android --dart-define-from-file=env.json
 On Android, `localhost` is the phone itself. Point `API_BASE_URL` in `app/env.json`
 to your deployed Vercel URL, or to `http://10.0.2.2:3000` when using the emulator.
 
+**Install a release build on a phone** (no hot reload, faster app). `flutter install`
+only installs an APK that is already built, and it uninstalls the old version
+first, so build it before installing:
+
+```bash
+cd app
+flutter devices                                                # find the device id
+flutter build apk --release --dart-define-from-file=env.json   # → build/app/outputs/flutter-apk/app-release.apk
+flutter install -d <device-id>
+```
+
+- Rebuild after every code change or `env.json` change: the values are baked into the APK.
+- Release builds only allow HTTPS, so `API_BASE_URL` must be the Vercel URL
+  (plain `http://`, such as `10.0.2.2`, only works in debug builds).
+- The release APK is signed with the debug key (`android/app/build.gradle`). That is
+  fine for your own devices; publishing on Google Play needs your own signing key.
+
 **Checks**:
 
 ```bash
@@ -143,17 +160,20 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…03_rls_policies.sql`: Row Level Security for every table.
 
    The last two are safe to run more than once.
-3. Authentication → URL Configuration: set **Site URL** to the deployed web app and
-   add these **Redirect URLs**, so password recovery emails open the app's
-   `/reset-password` page:
-   - `http://localhost:8000/**`
-   - `https://<your-vercel-domain>/**`
+3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
+   confirmation, password recovery) open the app:
+   - **Site URL**: the deployed web app, e.g. `https://<your-vercel-domain>`. It is
+     `http://localhost:3000` by default, and links that don't name an allowed
+     address (e.g. accounts created from Android) go there.
+   - **Redirect URLs**: `http://localhost:8000/**` and `https://<your-vercel-domain>/**`.
+     The web app asks for its own address (`/` after confirming an account,
+     `/reset-password` for a new password); Supabase only honors it if it's listed.
+
+   Open the link in the same browser where you signed up or asked for it: the app
+   then signs you in. In another browser the account is still confirmed, but you
+   have to sign in by hand.
 4. Optional: load sample data with `supabase/seed.sql`.
-5. Sign up in the app, then make yourself admin in the SQL editor:
-   ```sql
-   update public.profiles set role = 'admin'
-   where id = (select id from auth.users where email = 'you@example.com');
-   ```
+5. Sign up in the app, then make yourself admin (see [Administrators](#administrators)).
 
 ### 2. API environment
 
@@ -190,6 +210,43 @@ must always be set; on the deployed web app leave it empty to use the same origi
 3. Deploy. `scripts/vercel-build.sh` installs the pinned Flutter version and builds the
    web app into `app/build/web`. `vercel.json` sends every `/api/*` request to the
    single function in `api/index.ts`, and everything else to the Flutter app.
+
+## Administrators
+
+The role lives in `public.profiles.role` (`customer` or `admin`) and nobody can change
+it from the app: run these in Supabase's SQL editor. The person must have signed in
+at least once, since that's when their profile row is created; otherwise the update
+changes 0 rows.
+
+**Make someone admin:**
+
+```sql
+update public.profiles
+set role = 'admin', updated_at = now()
+where id = (select id from auth.users where lower(email) = lower('someone@example.com'));
+```
+
+**Remove the role:**
+
+```sql
+update public.profiles
+set role = 'customer', updated_at = now()
+where id = (select id from auth.users where lower(email) = lower('someone@example.com'));
+```
+
+**List admins:**
+
+```sql
+select u.email, p.full_name, p.updated_at
+from public.profiles p
+join auth.users u on u.id = p.id
+where p.role = 'admin'
+order by u.email;
+```
+
+The API checks the role on every `/api/admin/*` request, so a change applies right
+away. The app shows or hides "Administración" in the account menu after reloading
+the page or signing in again.
 
 ## API
 
