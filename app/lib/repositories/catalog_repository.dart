@@ -1,68 +1,60 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/providers.dart';
 import '../models/category.dart';
 import '../models/product.dart';
 import '../models/shop_settings.dart';
+import 'api_client.dart';
 
-/// Read-only access to the public catalog, straight from Supabase.
-/// RLS only exposes active items; admins use the API for everything else.
+/// Read-only access to the public storefront catalog through the API
+/// (`/api/categories`, `/api/products`, `/api/settings`). Only active items
+/// are returned; admins use `/api/admin/*` for everything else.
 class CatalogRepository {
-  CatalogRepository(this._db);
+  CatalogRepository(this._api);
 
-  final SupabaseClient _db;
+  final ApiClient _api;
 
-  Future<List<Category>> fetchCategories() async {
-    final rows = await _db
-        .from('categories')
-        .select()
-        .order('position', ascending: true)
-        .order('name', ascending: true);
-    return rows.map(Category.fromJson).toList();
-  }
+  /// Active categories in menu order.
+  Future<List<Category>> fetchCategories() async =>
+      parseList(await _api.get('/api/categories'), Category.fromJson);
 
-  Future<Category?> fetchCategoryBySlug(String slug) async {
-    final row = await _db
-        .from('categories')
-        .select()
-        .eq('slug', slug)
-        .maybeSingle();
-    return row == null ? null : Category.fromJson(row);
-  }
-
-  /// Products in [categoryIds] (a category plus its sub-categories),
-  /// or featured products when [featuredOnly] is set.
+  /// Featured products, or the products of a category (and its
+  /// sub-categories) by slug. An unknown category has no products.
   Future<List<Product>> fetchProducts({
-    List<String>? categoryIds,
+    String? categorySlug,
     bool featuredOnly = false,
-    bool activeOnly = true,
   }) async {
-    var query = _db.from('products').select(Product.selectQuery);
-    if (activeOnly) query = query.eq('is_active', true);
-    if (categoryIds != null) query = query.inFilter('category_id', categoryIds);
-    if (featuredOnly) query = query.eq('is_featured', true);
-    final rows = await query.order('created_at', ascending: false);
-    return rows.map(Product.fromJson).toList();
+    try {
+      final json = await _api.get(
+        '/api/products',
+        query: {
+          'category': ?categorySlug,
+          if (featuredOnly) 'featured': 'true',
+        },
+      );
+      return parseList(json, Product.fromJson);
+    } on ApiException catch (error) {
+      if (categorySlug != null && error.statusCode == 404) return [];
+      rethrow;
+    }
   }
 
   Future<Product?> fetchProductBySlug(String slug) async {
-    final row = await _db
-        .from('products')
-        .select(Product.selectQuery)
-        .eq('slug', slug)
-        .maybeSingle();
-    return row == null ? null : Product.fromJson(row);
+    try {
+      return Product.fromJson(
+        await _api.get('/api/products/${Uri.encodeComponent(slug)}'),
+      );
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) return null;
+      rethrow;
+    }
   }
 
-  Future<ShopSettings> fetchSettings() async {
-    final row = await _db.from('shop_settings').select().maybeSingle();
-    return row == null ? ShopSettings.fallback : ShopSettings.fromJson(row);
-  }
+  Future<ShopSettings> fetchSettings() async =>
+      ShopSettings.fromJson(await _api.get('/api/settings'));
 }
 
 final catalogRepositoryProvider = Provider(
-  (ref) => CatalogRepository(ref.watch(supabaseProvider)),
+  (ref) => CatalogRepository(ref.watch(apiClientProvider)),
 );
 
 final categoriesProvider = FutureProvider<List<Category>>((ref) {
@@ -82,15 +74,8 @@ final featuredProductsProvider = FutureProvider<List<Product>>((ref) {
 final categoryProductsProvider = FutureProvider.family<List<Product>, String>((
   ref,
   slug,
-) async {
-  final categories = await ref.watch(categoriesProvider.future);
-  final category = categories.where((c) => c.slug == slug).firstOrNull;
-  if (category == null) return [];
-  final ids = [
-    category.id,
-    ...categories.where((c) => c.parentId == category.id).map((c) => c.id),
-  ];
-  return ref.watch(catalogRepositoryProvider).fetchProducts(categoryIds: ids);
+) {
+  return ref.watch(catalogRepositoryProvider).fetchProducts(categorySlug: slug);
 });
 
 final productBySlugProvider = FutureProvider.family<Product?, String>((

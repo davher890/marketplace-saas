@@ -27,9 +27,6 @@ class Product {
   final List<ProductVariant> variants;
   final List<ProductImage> images;
 
-  /// Columns + nested relations for the public catalog reads (PostgREST).
-  static const selectQuery = '*, product_variants(*), product_images(*)';
-
   String? get coverUrl => images.isEmpty ? null : images.first.url;
 
   List<ProductVariant> get activeVariants =>
