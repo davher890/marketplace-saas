@@ -50,6 +50,23 @@ flutter run -d android --dart-define-from-file=env.json
 On Android, `localhost` is the phone itself. Point `API_BASE_URL` in `app/env.json`
 to your deployed Vercel URL, or to `http://10.0.2.2:3000` when using the emulator.
 
+**Install a release build on a phone** (no hot reload, faster app). `flutter install`
+only installs an APK that is already built, and it uninstalls the old version
+first, so build it before installing:
+
+```bash
+cd app
+flutter devices                                                # find the device id
+flutter build apk --release --dart-define-from-file=env.json   # → build/app/outputs/flutter-apk/app-release.apk
+flutter install -d <device-id>
+```
+
+- Rebuild after every code change or `env.json` change: the values are baked into the APK.
+- Release builds only allow HTTPS, so `API_BASE_URL` must be the Vercel URL
+  (plain `http://`, such as `10.0.2.2`, only works in debug builds).
+- The release APK is signed with the debug key (`android/app/build.gradle`). That is
+  fine for your own devices; publishing on Google Play needs your own signing key.
+
 **Checks**:
 
 ```bash
