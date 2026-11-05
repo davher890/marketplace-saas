@@ -173,11 +173,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    then signs you in. In another browser the account is still confirmed, but you
    have to sign in by hand.
 4. Optional: load sample data with `supabase/seed.sql`.
-5. Sign up in the app, then make yourself admin in the SQL editor:
-   ```sql
-   update public.profiles set role = 'admin'
-   where id = (select id from auth.users where email = 'you@example.com');
-   ```
+5. Sign up in the app, then make yourself admin (see [Administrators](#administrators)).
 
 ### 2. API environment
 
@@ -214,6 +210,43 @@ must always be set; on the deployed web app leave it empty to use the same origi
 3. Deploy. `scripts/vercel-build.sh` installs the pinned Flutter version and builds the
    web app into `app/build/web`. `vercel.json` sends every `/api/*` request to the
    single function in `api/index.ts`, and everything else to the Flutter app.
+
+## Administrators
+
+The role lives in `public.profiles.role` (`customer` or `admin`) and nobody can change
+it from the app: run these in Supabase's SQL editor. The person must have signed in
+at least once, since that's when their profile row is created; otherwise the update
+changes 0 rows.
+
+**Make someone admin:**
+
+```sql
+update public.profiles
+set role = 'admin', updated_at = now()
+where id = (select id from auth.users where lower(email) = lower('someone@example.com'));
+```
+
+**Remove the role:**
+
+```sql
+update public.profiles
+set role = 'customer', updated_at = now()
+where id = (select id from auth.users where lower(email) = lower('someone@example.com'));
+```
+
+**List admins:**
+
+```sql
+select u.email, p.full_name, p.updated_at
+from public.profiles p
+join auth.users u on u.id = p.id
+where p.role = 'admin'
+order by u.email;
+```
+
+The API checks the role on every `/api/admin/*` request, so a change applies right
+away. The app shows or hides "Administración" in the account menu after reloading
+the page or signing in again.
 
 ## API
 
