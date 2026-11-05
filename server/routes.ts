@@ -2,6 +2,7 @@ import { isAdmin, requireAdmin, requireUser } from './auth';
 import { readBody, Reply } from './http';
 import { Router } from './router';
 import * as cart from './services/cart';
+import * as catalog from './services/catalog';
 import * as categories from './services/categories';
 import * as orders from './services/orders';
 import * as products from './services/products';
@@ -23,6 +24,16 @@ export const router = new Router()
       secret_key: Boolean(process.env.SUPABASE_SECRET_KEY),
     },
   }))
+  // Storefront catalog: no session needed.
+  .get('/api/categories', async () => catalog.listCategories())
+  .get('/api/products', async ({ query }) =>
+    catalog.listProducts({
+      category: query.get('category'),
+      featured: query.get('featured') === 'true',
+    }),
+  )
+  .get('/api/products/:slug', async ({ params }) => catalog.getProductBySlug(params.slug))
+  .get('/api/settings', async () => settings.getSettings())
 
   // --- Current user ---------------------------------------------------------
   .get('/api/me', async ({ request }) => profiles.getOrCreateProfile(await requireUser(request)))

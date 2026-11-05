@@ -60,11 +60,10 @@ cd app && flutter analyze && flutter test    # app
 ## Architecture
 
 ```
-Flutter app ──(public catalog, read only)──────────────────────► Supabase REST (RLS)
+Flutter app ──(sign in / sign up / password)────────────────► Supabase Auth
      │
-     ├──(sign in / sign up)────────────────────────────────────► Supabase Auth
-     │
-     └──(Bearer <access token>)──► Vercel API ──(supabase-js)──► Supabase REST / Auth / Storage
+     └──(all data; Bearer <access token> when signed in)──► Vercel API ──(supabase-js)──► Supabase REST / Auth / Storage
+                                     ├─ publishable key (public catalog, RLS applies)
                                      ├─ as the user (their token, RLS applies)
                                      └─ service role (admin, orders, stock), after its own checks
 ```
@@ -80,8 +79,10 @@ Flutter app ──(public catalog, read only)───────────�
   - `supabaseAdmin()`: secret key, for what a customer must never do with their own
     token (create orders, change stock, admin panel), always after `requireAdmin` or
     an ownership check.
-- **The app reads the public catalog directly from Supabase** (categories, products,
-  variants, images, shop settings). Everything else goes through the API.
+- **The app gets all its data from the API**, the public catalog included
+  (`/api/categories`, `/api/products`, `/api/settings`). It only talks to Supabase
+  for authentication, to upload admin images to a signed URL issued by the API,
+  and to load the product image files (public bucket URLs).
 - **RLS** ([`…03_rls_policies.sql`](supabase/migrations/20261104000003_rls_policies.sql)):
   anyone reads the active catalog; each user reads and writes only their own
   profile (never the `role` column) and cart, and reads only their own orders.
@@ -198,6 +199,10 @@ All bodies are JSON in snake_case. Authenticated routes need
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/api/health` | Health check. |
+| GET | `/api/categories` | Active categories, in menu order. No session needed. |
+| GET | `/api/products?featured=true`, `?category=<slug>` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). |
+| GET | `/api/products/:slug` | One active product (404 if not found or inactive). |
+| GET | `/api/settings` | Shipping and contact settings. |
 | GET / PATCH | `/api/me` | Current profile (created on first call) / update `{full_name, phone}`. The email can't be changed. |
 | GET | `/api/cart` | Cart with nested products and totals. |
 | POST | `/api/cart/items` | Add `{variant_id, quantity, customization}`. |

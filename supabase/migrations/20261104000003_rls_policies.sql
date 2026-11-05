@@ -3,8 +3,9 @@
 -- created again.
 --
 -- Who queries Supabase:
---   * The Flutter app, with the publishable key: sign in and READ the public
---     catalog (anon / authenticated).
+--   * The Flutter app only signs in with Supabase Auth; it gets all its data
+--     from the API.
+--   * The API with the publishable key (anon): the public catalog.
 --   * The API as the calling user (publishable key + their access token): the
 --     user's profile, cart and orders, so auth.uid() is the real caller.
 --   * The API with the secret key (service role, not subject to RLS): creating
