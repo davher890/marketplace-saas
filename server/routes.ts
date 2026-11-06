@@ -8,6 +8,7 @@ import * as orders from './services/orders';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
 import * as push from './services/push';
+import * as sessions from './services/sessions';
 import * as settings from './services/settings';
 import { supabaseAdmin } from './supabase';
 
@@ -36,13 +37,35 @@ export const router = new Router()
   .get('/api/products/:slug', async ({ params }) => catalog.getProductBySlug(params.slug))
   .get('/api/settings', async () => settings.getSettings())
 
+  // --- Authentication (the app never calls Supabase Auth directly) ----------
+  .post('/api/auth/signup', async ({ request }) =>
+    new Reply(await sessions.signUp(await readBody(request, sessions.signUpSchema)), 201),
+  )
+  .post('/api/auth/login', async ({ request }) =>
+    sessions.signIn(await readBody(request, sessions.signInSchema)),
+  )
+  .post('/api/auth/refresh', async ({ request }) =>
+    sessions.refresh(await readBody(request, sessions.refreshSchema)),
+  )
+  .post('/api/auth/logout', async ({ request }) => sessions.signOut((await requireUser(request)).accessToken))
+  .post('/api/auth/recover', async ({ request }) =>
+    sessions.recover(await readBody(request, sessions.recoverSchema)),
+  )
+  .put('/api/auth/password', async ({ request }) => {
+    const user = await requireUser(request);
+    return sessions.changePassword(user, user.accessToken, await readBody(request, sessions.changePasswordSchema));
+  })
+
   // --- Current user ---------------------------------------------------------
   .get('/api/me', async ({ request }) => profiles.getOrCreateProfile(await requireUser(request)))
   .patch('/api/me', async ({ request }) => {
     const user = await requireUser(request);
     return profiles.updateProfile(user, await readBody(request, profiles.updateProfileSchema));
   })
-  .delete('/api/me', async ({ request }) => profiles.deleteAccount(await requireUser(request)))
+  .delete('/api/me', async ({ request }) => {
+    const user = await requireUser(request);
+    return profiles.deleteAccount(user, await readBody(request, profiles.deleteAccountSchema));
+  })
 
   // --- Cart -------------------------------------------------------------------
   .get('/api/cart', async ({ request }) => cart.getCart(await requireUser(request)))

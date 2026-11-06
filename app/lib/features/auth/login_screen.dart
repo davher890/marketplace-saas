@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/providers.dart';
+import '../../core/auth.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common.dart';
 
-/// Email + password sign in / sign up using Supabase Auth.
+/// Email + password sign in / sign up, through the API.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.redirectTo});
 
@@ -36,18 +36,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
-    final auth = ref.read(supabaseProvider).auth;
+    final auth = ref.read(authProvider.notifier);
 
     try {
       if (_isSignUp) {
-        final response = await auth.signUp(
+        final signedIn = await auth.signUp(
           email: _email.text.trim(),
           password: _password.text,
-          data: {'full_name': _name.text.trim()},
+          fullName: _name.text.trim(),
           // Without it the confirmation link goes to Supabase's Site URL.
-          emailRedirectTo: authRedirectUrl(),
+          redirectTo: authRedirectUrl(),
         );
-        if (response.session == null) {
+        if (!signedIn) {
           // Email confirmation is enabled in Supabase.
           if (mounted) {
             showMessage(context, 'Revisa tu email para confirmar la cuenta.');
@@ -55,10 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           return;
         }
       } else {
-        await auth.signInWithPassword(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
+        await auth.signIn(email: _email.text.trim(), password: _password.text);
       }
       if (mounted) context.go(widget.redirectTo ?? '/');
     } catch (error) {

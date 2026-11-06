@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/providers.dart';
+import '../../core/auth.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/password_fields.dart';
 
-/// Opened from the password recovery email. Supabase signs the user in with
-/// the link (before the app starts, see `Supabase.initialize`), so here they
-/// only choose the new password.
+/// Opened from the password recovery email. The link signs the user in (the
+/// app reads the session from the URL on start-up, see `AuthLink`), so here
+/// they only choose the new password.
 class ResetPasswordScreen extends ConsumerStatefulWidget {
   const ResetPasswordScreen({super.key});
 

@@ -1,9 +1,8 @@
-import { randomUUID } from 'node:crypto';
-
 import { z } from 'zod';
 
 import { badRequest, conflict, notFound } from '../http';
-import { check, now, PRODUCT_IMAGES_BUCKET, supabaseAdmin, unwrap } from '../supabase';
+import { check, now, supabaseAdmin, unwrap } from '../supabase';
+import * as images from './images';
 import {
   assertCategoriesExist,
   normalizeCategoryIds,
@@ -19,7 +18,7 @@ export type Product = Record<string, unknown> & {
   id: string;
   category_id: string | null;
   product_variants: { id: string; position: number }[];
-  product_images: { id: string; position: number; storage_path: string | null }[];
+  product_images: { id: string; position: number; url: string; storage_path: string | null }[];
   product_categories?: { category_id: string; created_at: string }[];
 };
 
@@ -28,7 +27,7 @@ const productSelect = `*, product_variants(*), product_images(*), ${productCateg
 /** Nested lists in display order, and `category_ids` (main category first). */
 function sortNested(product: Product): Product & { category_ids: string[] } {
   product.product_variants.sort((a, b) => a.position - b.position);
-  product.product_images.sort((a, b) => a.position - b.position);
+  images.withImageUrls(product.product_images).sort((a, b) => a.position - b.position);
   return withCategoryIds(product);
 }
 
@@ -236,46 +235,32 @@ export async function patchProduct(
 /** Deletes the product (variants and images cascade) and its stored files. */
 export async function deleteProduct(productId: string): Promise<void> {
   const db = supabaseAdmin();
-  const images = unwrap(
+  const stored = unwrap(
     await db.from('product_images').select('storage_path').eq('product_id', productId),
   ) as { storage_path: string | null }[];
   const deleted = unwrap(await db.from('products').delete().eq('id', productId).select('id')) as unknown[];
   if (deleted.length === 0) throw notFound('Product not found');
-  await removeFiles(images.map((image) => image.storage_path));
+  await images.removeImageFiles(stored.map((image) => image.storage_path));
 }
 
 // -----------------------------------------------------------------------------
 // Images
 // -----------------------------------------------------------------------------
 
-const IMAGE_TYPES: Record<string, string> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  gif: 'image/gif',
-};
+// Storing files is up to images.ts; here only which product they belong to.
 
 export const uploadUrlSchema = z.object({
   file_name: z.string().trim().min(1).max(200),
 });
 
 /**
- * Issues a signed URL so the admin app uploads the file straight to Storage
- * (no file goes through the API). Register it afterwards with [addImage].
+ * Where and how the admin app uploads a new image of the product (straight
+ * to the storage provider: no file goes through the API). Register it
+ * afterwards with [addImage].
  */
 export async function createImageUpload(productId: string, fileName: string) {
   await getProduct(productId);
-
-  const extension = fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : '';
-  const contentType = IMAGE_TYPES[extension];
-  if (!contentType) throw badRequest('Only JPG, PNG, WEBP or GIF images are allowed');
-
-  const path = `${productId}/${Date.now()}-${randomUUID().slice(0, 8)}.${extension}`;
-  const { data, error } = await supabaseAdmin().storage.from(PRODUCT_IMAGES_BUCKET).createSignedUploadUrl(path);
-  if (error || !data) throw new Error(`Could not create upload URL: ${error?.message}`);
-
-  return { bucket: PRODUCT_IMAGES_BUCKET, path: data.path, token: data.token, content_type: contentType };
+  return images.createImageUpload(productId, fileName);
 }
 
 export const addImageSchema = z
@@ -296,10 +281,11 @@ export async function addImage(productId: string, input: z.infer<typeof addImage
 
   let url = input.url ?? '';
   if (input.storage_path) {
-    if (!input.storage_path.startsWith(`${productId}/`)) {
+    if (!images.isProductImagePath(productId, input.storage_path)) {
       throw badRequest('The image does not belong to this product');
     }
-    url = db.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(input.storage_path).data.publicUrl;
+    // Stored for reference; reads rebuild it from storage_path (images.ts).
+    url = images.publicImageUrl(input.storage_path);
   }
 
   const position = product.product_images.reduce((max, image) => Math.max(max, image.position + 1), 0);
@@ -322,13 +308,5 @@ export async function deleteImage(imageId: string): Promise<void> {
     await supabaseAdmin().from('product_images').delete().eq('id', imageId).select('storage_path'),
   ) as { storage_path: string | null }[];
   if (deleted.length === 0) throw notFound('Image not found');
-  await removeFiles(deleted.map((image) => image.storage_path));
-}
-
-/** Best effort: a leftover file must not fail an otherwise finished request. */
-async function removeFiles(paths: (string | null)[]): Promise<void> {
-  const files = paths.filter((path): path is string => Boolean(path));
-  if (files.length === 0) return;
-  const { error } = await supabaseAdmin().storage.from(PRODUCT_IMAGES_BUCKET).remove(files);
-  if (error) console.error('Could not delete files from storage', files, error.message);
+  await images.removeImageFiles(deleted.map((image) => image.storage_path));
 }

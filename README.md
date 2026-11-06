@@ -79,12 +79,12 @@ cd app && flutter analyze && flutter test    # app
 ## Architecture
 
 ```
-Flutter app ──(sign in / sign up / password)────────────────► Supabase Auth
-     │
-     └──(all data; Bearer <access token> when signed in)──► Vercel API ──(supabase-js)──► Supabase REST / Auth / Storage
-                                     ├─ publishable key (public catalog, RLS applies)
-                                     ├─ as the user (their token, RLS applies)
-                                     └─ service role (admin, orders, stock), after its own checks
+Flutter app ──(everything: data, sign in, sessions; Bearer <access token>)──► Vercel API ──(supabase-js)──► Supabase REST / Auth / Storage
+     │                                     ├─ publishable key (public catalog, sign in, RLS applies)
+     │                                     ├─ as the user (their token, RLS applies)
+     │                                     └─ service role (admin, orders, stock), after its own checks
+     ├──(admin image upload: Supabase SDK, signed upload from the API)──► Supabase Storage
+     └──(image files: the public URLs the API returns)──────────────────► Supabase Storage
 ```
 
 - **The database only stores data.** It has no functions or triggers.
@@ -98,10 +98,27 @@ Flutter app ──(sign in / sign up / password)──────────�
   - `supabaseAdmin()`: secret key, for what a customer must never do with their own
     token (create orders, change stock, admin panel), always after `requireAdmin` or
     an ownership check.
-- **The app gets all its data from the API**, the public catalog included
-  (`/api/categories`, `/api/products`, `/api/settings`). It only talks to Supabase
-  for authentication, to upload admin images to a signed URL issued by the API,
-  and to load the product image files (public bucket URLs).
+- **The app only talks to the API**: data (the public catalog included), sign in and
+  sessions (`/api/auth/*`). Changing the database or the auth provider means
+  changing the API, not publishing a new app. The exception is uploading product
+  images, which uses the Supabase SDK in a single file (see Images below); images
+  load from the URLs the API returns.
+- **Sessions** ([`lib/core/auth.dart`](app/lib/core/auth.dart)): the app stores the
+  access and refresh tokens with `flutter_secure_storage` (Android Keystore,
+  encrypted on the web), renews the access token a minute before it expires (or
+  after a 401) through `/api/auth/refresh`, and sends it as `Bearer` to the API.
+  Email links (confirm account, recover password) go through Supabase and land on
+  the web app with the session in the URL fragment, which the app reads on start-up
+  and then removes from the address bar.
+- **Images**: two files know the storage provider (Supabase Storage), one per side.
+  Moving to S3, R2, Cloudinary... means rewriting those two (and copying the files
+  over).
+  - API: [`server/services/images.ts`](server/services/images.ts) signs uploads,
+    builds public URLs and deletes files. The database keeps each image's
+    `storage_path`, and URLs are built from it when reading.
+  - App: [`product_image_repository.dart`](app/lib/repositories/product_image_repository.dart)
+    uploads, links and deletes images. It's the only file in the app that uses the
+    Supabase SDK (`uploadBinaryToSignedUrl`), including its configuration.
 - **RLS** ([`…03_rls_policies.sql`](supabase/migrations/20261104000003_rls_policies.sql)):
   anyone reads the active catalog; each user reads and writes only their own
   profile (never the `role` column) and cart, and reads only their own orders.
@@ -150,10 +167,12 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Stock: compare-and-swap updates (`… where stock = <value read>`, retried), so concurrent checkouts can't oversell | `stock.ts` |
 | Products saved with their variants; slug, SKUs and variant ownership validated before writing anything | `products.ts` |
 | Categories: two levels (menu + dropdowns), unique slug, a parent must be a main category, new ones go last, reordered by swapping with a sibling. Deleting is refused while a category has products or sub-categories (deactivate it to hide it) | `categories.ts` |
-| Images uploaded straight to Storage with a signed URL from the API (JPG/PNG/WEBP/GIF only) | `products.ts` |
+| Images: uploaded straight to Storage with a signed upload from the API (JPG/PNG/WEBP/GIF only, into the product's folder), public URLs built from `storage_path` when reading, files deleted with the image or product | `images.ts` |
+| Sign in, sign up, sessions: Supabase Auth called only from the API, with a new client per call. Errors keep Supabase's code (`invalid_credentials`...) for the app to show in Spanish. Password recovery answers the same for any email | `sessions.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
 | New order: a push notification to every admin's Android device. A failed notification never fails the checkout; devices FCM no longer knows are removed | `push.ts` |
-| Profile: name and phone editable (phone validated); email fixed. Password change and recovery use Supabase Auth from the app, and a change asks for the current password | `profiles.ts`, app `profile_repository.dart` |
+| Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
+| Password change: needs the current password, except within an hour of opening a recovery link. Supabase then ends every session of the user, so the API returns a new one for this device. Deleting the account also asks for the password | `sessions.ts`, `profiles.ts` |
 
 ## Setup
 
@@ -180,11 +199,14 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
      The web app asks for its own address (`/` after confirming an account,
      `/reset-password` for a new password); Supabase only honors it if it's listed.
 
-   Open the link in the same browser where you signed up or asked for it: the app
-   then signs you in. In another browser the account is still confirmed, but you
-   have to sign in by hand.
-4. Optional: load sample data with `supabase/seed.sql`.
-5. Sign up in the app, then make yourself admin (see [Administrators](#administrators)).
+   The link signs you in on the web app wherever you open it (the session comes in
+   the link itself).
+4. Authentication → Rate Limits: Supabase counts sign-in and sign-up attempts per
+   IP address, and every attempt now comes from the API on Vercel, so all users
+   share the same limit. If people get "Demasiados intentos", raise the limits for
+   sign-ins and token refreshes there.
+5. Optional: load sample data with `supabase/seed.sql`.
+6. Sign up in the app, then make yourself admin (see [Administrators](#administrators)).
 
 ### 2. API environment
 
@@ -205,16 +227,19 @@ npm run dev:api        # http://localhost:3000/api
 
 ### 3. Run the app
 
-Create `app/env.json` (gitignored) with the Supabase URL and publishable key
-(Project Settings → API):
+Create `app/env.json` (gitignored):
 
 ```json
 {
+  "API_BASE_URL": "http://localhost:3000",
   "SUPABASE_URL": "https://<project>.supabase.co",
-  "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_...",
-  "API_BASE_URL": "http://localhost:3000"
+  "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_..."
 }
 ```
+
+`API_BASE_URL` is all the app needs to run. `SUPABASE_URL` and
+`SUPABASE_PUBLISHABLE_KEY` (Project Settings → API) are only used to upload product
+images from the admin panel.
 
 ```bash
 cd app
@@ -359,16 +384,23 @@ the page or signing in again.
 ## API
 
 All bodies are JSON in snake_case. Authenticated routes need
-`Authorization: Bearer <supabase access token>`; `/api/admin/*` also needs the admin role.
+`Authorization: Bearer <access token>` (from `/api/auth/login`); `/api/admin/*` also
+needs the admin role.
 
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/api/health` | Health check. |
+| POST | `/api/auth/signup` | `{email, password, full_name?, redirect_to?}` → `{session, confirmation_required}` (`session` is null until the email is confirmed). |
+| POST | `/api/auth/login` | `{email, password}` → session `{access_token, refresh_token, expires_at, user}`. |
+| POST | `/api/auth/refresh` | `{refresh_token}` → new session (each refresh token works once). |
+| POST | `/api/auth/logout` | Ends the caller's session (its refresh token stops working). |
+| POST | `/api/auth/recover` | `{email, redirect_to?}`: emails a link to choose a new password. Same answer for unknown emails. |
+| PUT | `/api/auth/password` | `{password, current_password?}` → new session. `current_password` is required unless the session comes from a recovery link. |
 | GET | `/api/categories` | Active categories, in menu order. No session needed. |
 | GET | `/api/products?featured=true`, `?category=<slug>` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). |
 | GET | `/api/products/:slug` | One active product (404 if not found or inactive). |
 | GET | `/api/settings` | Shipping and contact settings. |
-| GET / PATCH / DELETE | `/api/me` | Current profile (created on first call) / update `{full_name, phone}` / delete the account. The email can't be changed. Deleting keeps the orders (without `user_id`) and is refused for admins. |
+| GET / PATCH / DELETE | `/api/me` | Current profile (created on first call) / update `{full_name, phone}` / delete the account with `{password}`. The email can't be changed. Deleting keeps the orders (without `user_id`) and is refused for admins. |
 | GET | `/api/cart` | Cart with nested products and totals. |
 | POST | `/api/cart/items` | Add `{variant_id, quantity, customization}`. |
 | PATCH / DELETE | `/api/cart/items/:id` | Set `{quantity}` (0 removes) / remove. |
@@ -383,13 +415,16 @@ All bodies are JSON in snake_case. Authenticated routes need
 | POST | `/api/admin/categories/:id/move` | `{direction: "up" \| "down"}` among its siblings. |
 | GET / POST | `/api/admin/products` | List all / create with `variants` and `category_ids` (the first is the main category). |
 | GET / PUT / PATCH / DELETE | `/api/admin/products/:id` | Read / replace with variants / toggle `is_active`, `is_featured` / delete. |
-| POST | `/api/admin/products/:id/images/upload-url` | Signed upload URL for `{file_name}`. |
+| POST | `/api/admin/products/:id/images/upload-url` | `{file_name}` → `{bucket, path, token, content_type}`: a one-time signed upload for the Supabase SDK. |
 | POST | `/api/admin/products/:id/images` | Register `{storage_path}` or `{url}`. |
 | DELETE | `/api/admin/images/:id` | Delete an image (and its file). |
 | PUT | `/api/admin/settings` | Update shipping and contact settings. |
 
-Errors come back as `{"error": "..."}` with 400 (invalid input), 401, 403, 404 or
-409 (business rule, e.g. out of stock).
+Errors come back as `{"error": "..."}` with 400 (invalid input), 401, 403, 404,
+409 (business rule, e.g. out of stock) or 429 (too many attempts). Authentication
+errors also carry a `code` (`invalid_credentials`, `email_not_confirmed`,
+`wrong_password`, `over_request_rate_limit`...) that the app turns into a message
+in Spanish.
 
 ## Development
 

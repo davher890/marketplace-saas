@@ -1,5 +1,6 @@
 import { notFound } from '../http';
 import { supabase, unwrap } from '../supabase';
+import { withImageUrls } from './images';
 import { productCategoriesEmbed, withCategoryIds } from './productCategories';
 
 // Public storefront catalog. Runs with the publishable key, so the RLS
@@ -12,7 +13,7 @@ type Row = Record<string, unknown>;
 type ProductRow = Row & {
   category_id: string | null;
   product_variants: { position: number; is_active: boolean }[];
-  product_images: { position: number }[];
+  product_images: { position: number; url: string; storage_path: string | null }[];
   product_categories?: { category_id: string; created_at: string }[];
 };
 
@@ -23,7 +24,7 @@ function shapeProduct(product: ProductRow): ProductRow & { category_ids: string[
   product.product_variants = product.product_variants
     .filter((v) => v.is_active)
     .sort((a, b) => a.position - b.position);
-  product.product_images.sort((a, b) => a.position - b.position);
+  withImageUrls(product.product_images).sort((a, b) => a.position - b.position);
   return withCategoryIds(product);
 }
 

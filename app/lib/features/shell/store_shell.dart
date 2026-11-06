@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env.dart';
-import '../../core/providers.dart';
+import '../../core/auth.dart';
 import '../../repositories/profile_repository.dart';
 import '../../core/theme.dart';
 import '../../models/category.dart';
@@ -271,7 +271,7 @@ class _AccountButton extends ConsumerWidget {
           ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.logout),
-          onPressed: () => ref.read(supabaseProvider).auth.signOut(),
+          onPressed: () => ref.read(authProvider.notifier).signOut(),
           child: const Text('Cerrar sesión'),
         ),
       ],

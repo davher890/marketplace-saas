@@ -1,8 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/providers.dart';
+import '../core/auth.dart';
 import 'api_client.dart';
 
 /// The signed-in user's profile, as returned by `GET /api/me`.
@@ -69,13 +68,13 @@ String? authRedirectUrl([String path = '']) =>
 /// Minimum length enforced by Supabase Auth by default.
 const minPasswordLength = 6;
 
-/// Profile edits go through the API; password changes use Supabase Auth.
+/// Profile and password changes, all through the API.
 /// The email is the account identity and can't be changed from the app.
 class ProfileRepository {
   ProfileRepository(this._api, this._auth);
 
   final ApiClient _api;
-  final GoTrueClient _auth;
+  final AuthController _auth;
 
   Future<Profile> updateProfile({String? fullName, String? phone}) async {
     final json = await _api.patch('/api/me', {
@@ -85,43 +84,38 @@ class ProfileRepository {
     return Profile.fromJson(json as Map<String, dynamic>);
   }
 
-  /// Checks the current password before setting a new one, so an unattended
-  /// signed-in device can't be used to take over the account.
+  /// The API checks the current password before setting the new one, so an
+  /// unattended signed-in device can't be used to take over the account.
+  /// Other devices are signed out; this one gets a new session.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) async {
-    await _verifyPassword(currentPassword);
-    await setNewPassword(newPassword);
-  }
+  }) => _setPassword({
+    'current_password': currentPassword,
+    'password': newPassword,
+  });
 
-  /// Deletes the account after checking the password, then signs out on this
-  /// device. Orders are kept by the shop (see `DELETE /api/me`).
+  /// Deletes the account (the API checks the password), then forgets the
+  /// session on this device. Orders are kept by the shop.
   Future<void> deleteAccount({required String password}) async {
-    await _verifyPassword(password);
-    await _api.delete('/api/me');
+    await _api.delete('/api/me', {'password': password});
     // The user no longer exists on the server: only clear the local session.
-    await _auth.signOut(scope: SignOutScope.local);
+    await _auth.forget();
   }
 
-  Future<void> _verifyPassword(String password) async {
-    final email = _auth.currentUser?.email;
-    if (email == null) throw const AuthException('No hay sesión iniciada');
-    try {
-      await _auth.signInWithPassword(email: email, password: password);
-    } on AuthException {
-      throw const AuthException('La contraseña actual no es correcta');
-    }
-  }
-
-  /// Sets the password of the signed-in user, e.g. after opening a
-  /// password recovery link.
+  /// Sets a new password right after opening a password recovery link (the
+  /// API allows it without the current one only then).
   Future<void> setNewPassword(String newPassword) =>
-      _auth.updateUser(UserAttributes(password: newPassword));
+      _setPassword({'password': newPassword});
+
+  Future<void> _setPassword(Map<String, String> body) async {
+    final json = await _api.put('/api/auth/password', body);
+    await _auth.adopt(AuthSession.fromJson(json as Map<String, dynamic>));
+  }
 
   /// Emails a link to choose a new password. On the web it opens
   /// `/reset-password` of this same site; elsewhere Supabase's Site URL.
-  Future<void> sendPasswordReset(String email) => _auth.resetPasswordForEmail(
+  Future<void> sendPasswordReset(String email) => _auth.recoverPassword(
     email,
     redirectTo: authRedirectUrl('/reset-password'),
   );
@@ -130,6 +124,6 @@ class ProfileRepository {
 final profileRepositoryProvider = Provider(
   (ref) => ProfileRepository(
     ref.watch(apiClientProvider),
-    ref.watch(supabaseProvider).auth,
+    ref.read(authProvider.notifier),
   ),
 );

@@ -7,17 +7,13 @@ import 'package:dona_galleta/repositories/order_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
-  final db = SupabaseClient('http://localhost:54321', 'test-key');
-
   ApiClient clientReturning(
     int status,
     Object? body, {
     void Function(http.Request)? onRequest,
   }) => ApiClient(
-    db,
     baseUrl: 'https://shop.test',
     httpClient: MockClient((request) async {
       onRequest?.call(request);

@@ -1,9 +1,6 @@
-import 'dart:typed_data';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/providers.dart';
+import '../core/auth.dart';
 import '../models/category.dart';
 import '../models/product.dart';
 import '../models/shop_settings.dart';
@@ -54,12 +51,9 @@ class VariantDraft {
 
 /// Admin operations. The API checks the admin role on every call.
 class AdminRepository {
-  AdminRepository(this._api, this._db);
+  AdminRepository(this._api);
 
   final ApiClient _api;
-
-  /// Only used to upload image bytes to the signed URL issued by the API.
-  final SupabaseClient _db;
 
   Future<List<Product>> fetchAllProducts() async =>
       parseList(await _api.get('/api/admin/products'), Product.fromJson);
@@ -142,46 +136,6 @@ class AdminRepository {
     await _api.delete('/api/admin/products/$productId');
   }
 
-  /// Asks the API for a signed upload URL, uploads the file straight to
-  /// Supabase Storage, then links it to the product.
-  Future<void> uploadProductImage({
-    required String productId,
-    required Uint8List bytes,
-    required String fileName,
-  }) async {
-    final upload =
-        await _api.post('/api/admin/products/$productId/images/upload-url', {
-              'file_name': fileName,
-            })
-            as Map<String, dynamic>;
-    final path = upload['path'] as String;
-
-    await _db.storage
-        .from(upload['bucket'] as String)
-        .uploadBinaryToSignedUrl(
-          path,
-          upload['token'] as String,
-          bytes,
-          FileOptions(contentType: upload['content_type'] as String),
-        );
-
-    await _api.post('/api/admin/products/$productId/images', {
-      'storage_path': path,
-    });
-  }
-
-  /// Links an externally hosted image (e.g. migrated from Wix).
-  Future<void> addProductImageUrl({
-    required String productId,
-    required String url,
-  }) async {
-    await _api.post('/api/admin/products/$productId/images', {'url': url});
-  }
-
-  Future<void> deleteProductImage(ProductImage image) async {
-    await _api.delete('/api/admin/images/${image.id}');
-  }
-
   Future<ShopSettings> saveSettings(ShopSettings settings) async =>
       ShopSettings.fromJson(
         await _api.put('/api/admin/settings', settings.toJson()),
@@ -189,10 +143,7 @@ class AdminRepository {
 }
 
 final adminRepositoryProvider = Provider(
-  (ref) => AdminRepository(
-    ref.watch(apiClientProvider),
-    ref.watch(supabaseProvider),
-  ),
+  (ref) => AdminRepository(ref.watch(apiClientProvider)),
 );
 
 final adminProductsProvider = FutureProvider<List<Product>>((ref) {

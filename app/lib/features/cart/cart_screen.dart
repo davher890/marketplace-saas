@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/money.dart';
-import '../../core/providers.dart';
+import '../../core/auth.dart';
 import '../../models/cart.dart';
 import '../../repositories/cart_repository.dart';
 import '../../repositories/catalog_repository.dart';

@@ -18,6 +18,8 @@ else
   FLUTTER_BIN="$FLUTTER_DIR/bin/flutter"
 fi
 
+# The app talks to the API for everything; the Supabase URL and publishable
+# key are only for uploading product images (product_image_repository.dart).
 : "${SUPABASE_URL:?SUPABASE_URL must be set}"
 : "${SUPABASE_PUBLISHABLE_KEY:?SUPABASE_PUBLISHABLE_KEY must be set}"
 

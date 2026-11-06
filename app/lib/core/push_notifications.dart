@@ -10,7 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/api_client.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/profile_repository.dart';
-import 'providers.dart';
+import '../widgets/common.dart';
+import 'auth.dart';
 import 'router.dart';
 
 // Push notifications to admins about new orders (Android only).
@@ -35,9 +36,6 @@ Future<bool> initPushNotifications() async {
 
 /// Set in `main` from [initPushNotifications].
 final pushEnabledProvider = Provider<bool>((ref) => false);
-
-/// Shows snack bars from outside the widget tree (foreground notifications).
-final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 /// Where a notification should take the admin when tapped.
 String? routeForMessage(Map<String, dynamic> data) {
