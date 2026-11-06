@@ -198,96 +198,109 @@ class _CategoryRow extends ConsumerWidget {
         ? null
         : AppColors.ink.withValues(alpha: 0.5);
 
-    return ListTile(
-      contentPadding: const EdgeInsets.only(left: 4, right: 8),
+    // A plain Row instead of a ListTile: ListTile gives `leading` a fixed
+    // height, and on Android each arrow keeps a 48 px touch target, so two of
+    // them overflowed. Here the row grows to fit them.
+    return InkWell(
       onTap: () =>
           showCategoryDialog(context, ref, all: all, category: category),
-      leading: SizedBox(
-        width: 40,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 4, 8, 4),
+        child: Row(
           children: [
-            _MoveButton(
-              icon: Icons.keyboard_arrow_up,
-              tooltip: 'Subir',
-              onPressed: isFirst
-                  ? null
-                  : () => _run(
-                      context,
-                      ref,
-                      (repo) => repo.moveCategory(category.id, up: true),
-                    ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _MoveButton(
+                  icon: Icons.keyboard_arrow_up,
+                  tooltip: 'Subir',
+                  onPressed: isFirst
+                      ? null
+                      : () => _run(
+                          context,
+                          ref,
+                          (repo) => repo.moveCategory(category.id, up: true),
+                        ),
+                ),
+                _MoveButton(
+                  icon: Icons.keyboard_arrow_down,
+                  tooltip: 'Bajar',
+                  onPressed: isLast
+                      ? null
+                      : () => _run(
+                          context,
+                          ref,
+                          (repo) => repo.moveCategory(category.id, up: false),
+                        ),
+                ),
+              ],
             ),
-            _MoveButton(
-              icon: Icons.keyboard_arrow_down,
-              tooltip: 'Bajar',
-              onPressed: isLast
-                  ? null
-                  : () => _run(
-                      context,
-                      ref,
-                      (repo) => repo.moveCategory(category.id, up: false),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    category.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: muted,
+                      fontWeight: category.isRoot ? FontWeight.w600 : null,
                     ),
+                  ),
+                  Text(
+                    [
+                      _products(category.productCount),
+                      if (!category.isActive) 'Oculta',
+                    ].join(' · '),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: category.isActive,
+              onChanged: (value) => _run(
+                context,
+                ref,
+                (repo) => repo.setCategoryActive(category.id, value),
+              ),
+            ),
+            PopupMenuButton<_Action>(
+              tooltip: 'Más acciones',
+              onSelected: (action) => switch (action) {
+                _Action.edit => showCategoryDialog(
+                  context,
+                  ref,
+                  all: all,
+                  category: category,
+                ),
+                _Action.addChild => showCategoryDialog(
+                  context,
+                  ref,
+                  all: all,
+                  parentId: category.id,
+                ),
+                _Action.delete => _delete(context, ref),
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: _Action.edit, child: Text('Editar')),
+                if (category.isRoot)
+                  const PopupMenuItem(
+                    value: _Action.addChild,
+                    child: Text('Añadir subcategoría'),
+                  ),
+                const PopupMenuItem(
+                  value: _Action.delete,
+                  child: Text('Eliminar'),
+                ),
+              ],
             ),
           ],
         ),
-      ),
-      title: Text(
-        category.name,
-        style: TextStyle(
-          color: muted,
-          fontWeight: category.isRoot ? FontWeight.w600 : null,
-        ),
-      ),
-      subtitle: Text(
-        [
-          _products(category.productCount),
-          if (!category.isActive) 'Oculta',
-        ].join(' · '),
-        style: TextStyle(color: muted),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Switch(
-            value: category.isActive,
-            onChanged: (value) => _run(
-              context,
-              ref,
-              (repo) => repo.setCategoryActive(category.id, value),
-            ),
-          ),
-          PopupMenuButton<_Action>(
-            tooltip: 'Más acciones',
-            onSelected: (action) => switch (action) {
-              _Action.edit => showCategoryDialog(
-                context,
-                ref,
-                all: all,
-                category: category,
-              ),
-              _Action.addChild => showCategoryDialog(
-                context,
-                ref,
-                all: all,
-                parentId: category.id,
-              ),
-              _Action.delete => _delete(context, ref),
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: _Action.edit, child: Text('Editar')),
-              if (category.isRoot)
-                const PopupMenuItem(
-                  value: _Action.addChild,
-                  child: Text('Añadir subcategoría'),
-                ),
-              const PopupMenuItem(
-                value: _Action.delete,
-                child: Text('Eliminar'),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -308,13 +321,18 @@ class _MoveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Same compact size on every platform (Android would otherwise pad
+    // each button to 48x48).
     return IconButton(
-      icon: Icon(icon, size: 20),
+      icon: Icon(icon, size: 22),
       tooltip: tooltip,
       onPressed: onPressed,
-      padding: EdgeInsets.zero,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints.tightFor(width: 32, height: 24),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const Size(40, 32),
+        fixedSize: const Size(40, 32),
+        padding: EdgeInsets.zero,
+      ),
     );
   }
 }

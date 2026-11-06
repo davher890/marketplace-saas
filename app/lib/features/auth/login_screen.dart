@@ -44,6 +44,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           email: _email.text.trim(),
           password: _password.text,
           data: {'full_name': _name.text.trim()},
+          // Without it the confirmation link goes to Supabase's Site URL.
+          emailRedirectTo: authRedirectUrl(),
         );
         if (response.session == null) {
           // Email confirmation is enabled in Supabase.
