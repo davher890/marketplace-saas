@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/env.dart';
 import '../../core/providers.dart';
 import '../../repositories/profile_repository.dart';
 import '../../core/theme.dart';
@@ -312,6 +314,24 @@ class _Footer extends ConsumerWidget {
             Text(settings!.contactEmail!, style: body),
           if (settings?.contactPhone != null)
             Text(settings!.contactPhone!, style: body),
+        ],
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Legal', style: heading),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => launchUrl(Env.sitePage('privacidad.html')),
+            child: const Text(
+              'Política de privacidad',
+              style: TextStyle(
+                color: AppColors.cream,
+                decoration: TextDecoration.underline,
+                decorationColor: AppColors.cream,
+              ),
+            ),
+          ),
         ],
       ),
     ];

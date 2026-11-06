@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/password_fields.dart';
 
-/// "Mi perfil": personal details, password change and password recovery.
+/// "Mi perfil": personal details, password change, password recovery and
+/// account deletion.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -32,6 +34,8 @@ class ProfileScreen extends ConsumerWidget {
                       const _PasswordCard(),
                       const SizedBox(height: 24),
                       _RecoveryCard(email: profile.email),
+                      const SizedBox(height: 24),
+                      _DeleteAccountCard(isAdmin: profile.isAdmin),
                     ],
                   ),
           ),
@@ -302,6 +306,144 @@ class _RecoveryCardState extends ConsumerState<_RecoveryCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Google Play requires apps with sign up to let users delete their account.
+class _DeleteAccountCard extends StatelessWidget {
+  const _DeleteAccountCard({required this.isAdmin});
+
+  final bool isAdmin;
+
+  Future<void> _delete(BuildContext context) async {
+    final deleted = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+    if (deleted == true && context.mounted) {
+      showMessage(context, 'Tu cuenta se ha eliminado.');
+      context.go('/');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return _Section(
+      title: 'Eliminar cuenta',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            isAdmin
+                ? 'Las cuentas de administrador no se pueden eliminar desde la '
+                      'app. Primero hay que quitarle el rol de administrador.'
+                : 'Se borrarán tu perfil, tu carrito y tus datos de acceso. '
+                      'Los pedidos que hayas hecho se conservan, sin estar '
+                      'ligados a ninguna cuenta, porque la tienda está obligada '
+                      'a guardar sus ventas.',
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colors.error,
+                side: BorderSide(color: colors.error),
+              ),
+              onPressed: isAdmin ? null : () => _delete(context),
+              child: const Text('Eliminar mi cuenta'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Asks for the password again and deletes the account. Pops `true` when done.
+class _DeleteAccountDialog extends ConsumerStatefulWidget {
+  const _DeleteAccountDialog();
+
+  @override
+  ConsumerState<_DeleteAccountDialog> createState() =>
+      _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
+  final _password = TextEditingController();
+  bool _deleting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _delete() async {
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(profileRepositoryProvider)
+          .deleteAccount(password: _password.text);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _deleting = false;
+          _error = describeError(error);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: const Text('¿Eliminar tu cuenta?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Esta acción no se puede deshacer. Escribe tu contraseña para '
+            'confirmarla.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _password,
+            obscureText: true,
+            autofocus: true,
+            enabled: !_deleting,
+            decoration: InputDecoration(
+              labelText: 'Contraseña',
+              errorText: _error,
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _password.text.isEmpty ? null : _delete(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _deleting ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: colors.error,
+            foregroundColor: colors.onError,
+          ),
+          onPressed: _deleting || _password.text.isEmpty ? null : _delete,
+          child: const Text('Eliminar'),
+        ),
+      ],
     );
   }
 }

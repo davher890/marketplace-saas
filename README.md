@@ -64,8 +64,10 @@ flutter install -d <device-id>
 - Rebuild after every code change or `env.json` change: the values are baked into the APK.
 - Release builds only allow HTTPS, so `API_BASE_URL` must be the Vercel URL
   (plain `http://`, such as `10.0.2.2`, only works in debug builds).
-- The release APK is signed with the debug key (`android/app/build.gradle`). That is
-  fine for your own devices; publishing on Google Play needs your own signing key.
+- The APK is signed with the Google Play upload key when `app/android/key.properties`
+  exists, and with the debug key otherwise (see [Publish on Google Play](#5-publish-on-google-play)).
+  The installed app keeps its data only while the key stays the same: switching keys
+  needs an uninstall first.
 
 **Checks**:
 
@@ -217,6 +219,61 @@ must always be set; on the deployed web app leave it empty to use the same origi
    web app into `app/build/web`. `vercel.json` sends every `/api/*` request to the
    single function in `api/index.ts`, and everything else to the Flutter app.
 
+### 5. Publish on Google Play
+
+The app ID is `es.donagalleta.app`. It can never change once the app is published.
+
+**Upload key.** Google Play only accepts bundles signed with your upload key. It lives
+outside git, in `app/android/upload-keystore.jks`, with its passwords in
+`app/android/key.properties`:
+
+```properties
+storeFile=upload-keystore.jks
+storePassword=...
+keyAlias=upload
+keyPassword=...
+```
+
+Keep a copy of both files somewhere safe, such as a password manager. Losing the key
+doesn't lose the app (with Play App Signing, Google holds the real signing key), but
+resetting it means asking Google support and waiting a few days. To create a new one:
+
+```bash
+cd app/android
+keytool -genkeypair -v -keystore upload-keystore.jks -storetype PKCS12 \
+  -alias upload -keyalg RSA -keysize 2048 -validity 10000
+```
+
+**Build the bundle.** Raise the number after `+` in `app/pubspec.yaml` (`version:
+1.0.0+1`) for every upload: Google Play rejects a version code it has seen before.
+
+```bash
+cd app
+flutter build appbundle --release --dart-define-from-file=env.json   # → build/app/outputs/bundle/release/app-release.aab
+```
+
+`API_BASE_URL` in `env.json` must be the production URL: the bundle keeps that
+value until the next upload.
+
+**Store listing.** In Play Console:
+
+- Icon `app/store/play/icon-512.png` and feature graphic `app/store/play/feature-graphic.png`.
+  Screenshots: at least 2 phone screenshots.
+- Privacy policy URL: `https://www.xn--doagalleta-u9a.es/privacidad.html`
+  (`app/web/privacidad.html`).
+- Account deletion URL: `https://www.xn--doagalleta-u9a.es/privacidad.html#eliminar-cuenta`.
+  Users can also delete their account from *Mi perfil*.
+- Data safety form:
+  - Collected: email, name, phone, address, purchase history and "other user content"
+    (order notes and personalisation texts). They are needed for the app to work and
+    for account management, and are not shared with third parties.
+  - Data is encrypted in transit and users can request deletion.
+  - No ads, analytics or location.
+- Target audience: adults (18+). The shop sells gifts for children but isn't aimed at them.
+
+New personal developer accounts must run a closed test with at least 12 testers for 14
+days before publishing to production. Organisation accounts don't need to.
+
 ## Administrators
 
 The role lives in `public.profiles.role` (`customer` or `admin`) and nobody can change
@@ -266,7 +323,7 @@ All bodies are JSON in snake_case. Authenticated routes need
 | GET | `/api/products?featured=true`, `?category=<slug>` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). |
 | GET | `/api/products/:slug` | One active product (404 if not found or inactive). |
 | GET | `/api/settings` | Shipping and contact settings. |
-| GET / PATCH | `/api/me` | Current profile (created on first call) / update `{full_name, phone}`. The email can't be changed. |
+| GET / PATCH / DELETE | `/api/me` | Current profile (created on first call) / update `{full_name, phone}` / delete the account. The email can't be changed. Deleting keeps the orders (without `user_id`) and is refused for admins. |
 | GET | `/api/cart` | Cart with nested products and totals. |
 | POST | `/api/cart/items` | Add `{variant_id, quantity, customization}`. |
 | PATCH / DELETE | `/api/cart/items/:id` | Set `{quantity}` (0 removes) / remove. |

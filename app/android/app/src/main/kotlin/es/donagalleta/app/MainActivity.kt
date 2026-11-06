@@ -1,4 +1,4 @@
-package com.donagalleta.dona_galleta
+package es.donagalleta.app
 
 import io.flutter.embedding.android.FlutterActivity
 
