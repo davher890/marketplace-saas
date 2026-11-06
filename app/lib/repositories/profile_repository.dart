@@ -91,14 +91,27 @@ class ProfileRepository {
     required String currentPassword,
     required String newPassword,
   }) async {
+    await _verifyPassword(currentPassword);
+    await setNewPassword(newPassword);
+  }
+
+  /// Deletes the account after checking the password, then signs out on this
+  /// device. Orders are kept by the shop (see `DELETE /api/me`).
+  Future<void> deleteAccount({required String password}) async {
+    await _verifyPassword(password);
+    await _api.delete('/api/me');
+    // The user no longer exists on the server: only clear the local session.
+    await _auth.signOut(scope: SignOutScope.local);
+  }
+
+  Future<void> _verifyPassword(String password) async {
     final email = _auth.currentUser?.email;
     if (email == null) throw const AuthException('No hay sesión iniciada');
     try {
-      await _auth.signInWithPassword(email: email, password: currentPassword);
+      await _auth.signInWithPassword(email: email, password: password);
     } on AuthException {
       throw const AuthException('La contraseña actual no es correcta');
     }
-    await setNewPassword(newPassword);
   }
 
   /// Sets the password of the signed-in user, e.g. after opening a

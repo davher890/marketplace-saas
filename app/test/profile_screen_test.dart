@@ -3,6 +3,7 @@ import 'package:dona_galleta/repositories/profile_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 /// Records the calls the screen makes instead of talking to the API / Auth.
 class _FakeProfileRepository implements ProfileRepository {
@@ -25,13 +26,17 @@ class _FakeProfileRepository implements ProfileRepository {
       calls.add('reset $email');
 
   @override
+  Future<void> deleteAccount({required String password}) async =>
+      calls.add('delete $password');
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
   late _FakeProfileRepository repository;
 
-  Future<void> pumpProfile(WidgetTester tester) async {
+  Future<void> pumpProfile(WidgetTester tester, {bool isAdmin = false}) async {
     tester.view.physicalSize = const Size(800, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -40,17 +45,31 @@ void main() {
       ProviderScope(
         overrides: [
           profileProvider.overrideWith(
-            (ref) async => const Profile(
+            (ref) async => Profile(
               id: 'u1',
-              isAdmin: false,
+              isAdmin: isAdmin,
               email: 'ana@example.com',
               fullName: 'Ana',
             ),
           ),
           profileRepositoryProvider.overrideWithValue(repository),
         ],
-        child: const MaterialApp(
-          home: Scaffold(body: SingleChildScrollView(child: ProfileScreen())),
+        child: MaterialApp.router(
+          routerConfig: GoRouter(
+            initialLocation: '/profile',
+            routes: [
+              GoRoute(
+                path: '/',
+                builder: (_, _) => const Scaffold(body: Text('Inicio')),
+              ),
+              GoRoute(
+                path: '/profile',
+                builder: (_, _) => const Scaffold(
+                  body: SingleChildScrollView(child: ProfileScreen()),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -106,6 +125,28 @@ void main() {
     await tester.tap(find.text('Enviar enlace'));
     await tester.pumpAndSettle();
     expect(repository.calls, ['reset ana@example.com']);
+  });
+
+  testWidgets('deleting the account asks for the password', (tester) async {
+    await pumpProfile(tester);
+    await tester.tap(find.text('Eliminar mi cuenta'));
+    await tester.pumpAndSettle();
+    final confirm = find.widgetWithText(FilledButton, 'Eliminar');
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+
+    await tester.enterText(field('Contraseña'), 'secret');
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(repository.calls, ['delete secret']);
+    expect(find.text('Inicio'), findsOneWidget);
+    expect(find.text('Tu cuenta se ha eliminado.'), findsOneWidget);
+  });
+
+  testWidgets('admins cannot delete their account', (tester) async {
+    await pumpProfile(tester, isAdmin: true);
+    final button = find.widgetWithText(OutlinedButton, 'Eliminar mi cuenta');
+    expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
   });
 
   test('validatePhone', () {

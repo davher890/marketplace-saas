@@ -41,6 +41,7 @@ export const router = new Router()
     const user = await requireUser(request);
     return profiles.updateProfile(user, await readBody(request, profiles.updateProfileSchema));
   })
+  .delete('/api/me', async ({ request }) => profiles.deleteAccount(await requireUser(request)))
 
   // --- Cart -------------------------------------------------------------------
   .get('/api/cart', async ({ request }) => cart.getCart(await requireUser(request)))

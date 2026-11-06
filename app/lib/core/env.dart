@@ -14,6 +14,13 @@ class Env {
   /// Leave empty on web to use the same origin the app is served from.
   static const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
 
+  /// Page of the deployed website, e.g. `privacidad.html`: this same site on
+  /// web, the site behind [apiBaseUrl] elsewhere (the API and the web app are
+  /// one Vercel deployment).
+  static Uri sitePage(String path) => apiBaseUrl.isEmpty
+      ? Uri.base.resolve('/$path')
+      : Uri.parse('$apiBaseUrl/$path');
+
   static bool get isConfigured =>
       supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
 }

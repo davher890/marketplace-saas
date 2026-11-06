@@ -1,11 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Upload key for Google Play, kept out of git (see README "Publish on Google Play").
+// Without android/key.properties, release builds are signed with the debug key:
+// fine to install on a phone, rejected by Google Play.
+val keyProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasUploadKey = keyProperties.getProperty("storeFile") != null
+
 android {
-    namespace = "com.donagalleta.dona_galleta"
+    namespace = "es.donagalleta.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,23 +26,35 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.donagalleta.dona_galleta"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // Google Play identifies the app by this ID: it can never change once published.
+        applicationId = "es.donagalleta.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
+        // From `version: x.y.z+N` in pubspec.yaml. Raise N for every upload.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+    signingConfigs {
+        if (hasUploadKey) {
+            create("upload") {
+                storeFile = rootProject.file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
         }
     }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
+        }
+    }
+}
+
+if (!hasUploadKey) {
+    logger.warn("android/key.properties not found: the release build is signed with the debug key and Google Play will reject it.")
 }
 
 kotlin {

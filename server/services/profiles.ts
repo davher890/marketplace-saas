@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-import type { AuthUser } from '../auth';
-import { check, now, unwrap } from '../supabase';
+import { isAdmin, type AuthUser } from '../auth';
+import { conflict } from '../http';
+import { check, now, supabaseAdmin, unwrap } from '../supabase';
 
 export interface Profile {
   id: string;
@@ -64,4 +65,19 @@ export async function updateProfile(
     check(error);
   }
   return getOrCreateProfile(user);
+}
+
+/**
+ * Deletes the user's account (Google Play requires apps to offer it). The
+ * profile and cart go with it (`on delete cascade`); orders are kept, with
+ * `user_id` set to null, because the shop must keep its sales records.
+ * Admins are refused so the shop can't lose its last admin by accident.
+ */
+export async function deleteAccount(user: AuthUser): Promise<{ deleted: true }> {
+  if (await isAdmin(user)) {
+    throw conflict('Admins cannot delete their account. Remove the admin role first.');
+  }
+  const { error } = await supabaseAdmin().auth.admin.deleteUser(user.id);
+  check(error);
+  return { deleted: true };
 }
