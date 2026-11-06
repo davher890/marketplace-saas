@@ -188,15 +188,25 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 
 ### 2. API environment
 
-Copy [`.env.example`](.env.example) to `.env` and fill in the values:
+Create `.env` in the repository root (gitignored: it holds secrets, never commit it):
 
-| Variable | Where to find it |
-| --- | --- |
-| `SUPABASE_URL` | Project Settings → API |
-| `SUPABASE_PUBLISHABLE_KEY` | Project Settings → API Keys → Publishable key (`sb_publishable_…`) |
-| `SUPABASE_SECRET_KEY` | Project Settings → API Keys → Secret keys (`sb_secret_…`). Server only |
-| `ALLOWED_ORIGINS` | Only for local development across origins |
-| `FIREBASE_SERVICE_ACCOUNT` | Optional: push notifications, see [Push notifications](#6-push-notifications-to-admins). Server only |
+```properties
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+ALLOWED_ORIGINS=http://localhost:8000
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+API_BASE_URL=
+FIREBASE_SERVICE_ACCOUNT=
+```
+
+| Variable | Where to find it | Used by |
+| --- | --- | --- |
+| `SUPABASE_URL` | Project Settings → API | API and web build |
+| `SUPABASE_SECRET_KEY` | Project Settings → API Keys → Secret keys (`sb_secret_…`). Secret | API (Auth checks, admin writes, Storage) |
+| `ALLOWED_ORIGINS` | Comma-separated origins allowed to call `/api` from another origin. Only for local development | API |
+| `SUPABASE_PUBLISHABLE_KEY` | Project Settings → API Keys → Publishable key (`sb_publishable_…`) | API and web build |
+| `API_BASE_URL` | Leave empty: the deployed web app calls the API on its own origin | Web build |
+| `FIREBASE_SERVICE_ACCOUNT` | Optional. Service account key JSON on one line, see [Push notifications](#6-push-notifications-to-admins). Secret | API |
 
 ```bash
 npm install
@@ -230,8 +240,8 @@ must always be set; on the deployed web app leave it empty to use the same origi
 ### 4. Deploy to Vercel
 
 1. Import the repository in Vercel (root directory = repository root).
-2. Add the environment variables from `.env.example`, including
-   `SUPABASE_PUBLISHABLE_KEY` for the web build.
+2. Add the environment variables from [API environment](#2-api-environment) (all but
+   `ALLOWED_ORIGINS`), including `SUPABASE_PUBLISHABLE_KEY` for the web build.
 3. Deploy. `scripts/vercel-build.sh` installs the pinned Flutter version and builds the
    web app into `app/build/web`. `vercel.json` sends every `/api/*` request to the
    single function in `api/index.ts`, and everything else to the Flutter app.
