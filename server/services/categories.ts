@@ -18,15 +18,18 @@ export interface Category {
   image_url: string | null;
   position: number;
   is_active: boolean;
-  /** Products directly in this category, active or not. */
+  /** Products listed in this category, active or not. */
   product_count: number;
 }
 
-type CategoryRow = Omit<Category, 'product_count'> & { products?: { count: number }[] };
+// Counted through `product_categories`: a product listed in several
+// categories counts in each. (Embedding `products` here would be ambiguous,
+// since categories reach products both directly and through that table.)
+type CategoryRow = Omit<Category, 'product_count'> & { product_categories?: { count: number }[] };
 
-const toCategory = ({ products, ...row }: CategoryRow): Category => ({
+const toCategory = ({ product_categories, ...row }: CategoryRow): Category => ({
   ...row,
-  product_count: products?.[0]?.count ?? 0,
+  product_count: product_categories?.[0]?.count ?? 0,
 });
 
 /** Every category, active or not, ordered as in the menu, with product counts. */
@@ -34,7 +37,7 @@ export async function listCategories(): Promise<Category[]> {
   const rows = unwrap(
     await supabaseAdmin()
       .from('categories')
-      .select('*, products(count)')
+      .select('*, product_categories(count)')
       .order('position', { ascending: true })
       .order('name', { ascending: true }),
   ) as CategoryRow[];
@@ -43,7 +46,7 @@ export async function listCategories(): Promise<Category[]> {
 
 async function getCategory(id: string): Promise<Category> {
   const row = unwrap(
-    await supabaseAdmin().from('categories').select('*, products(count)').eq('id', id).maybeSingle(),
+    await supabaseAdmin().from('categories').select('*, product_categories(count)').eq('id', id).maybeSingle(),
   ) as CategoryRow | null;
   if (!row) throw notFound('Category not found');
   return toCategory(row);
@@ -197,7 +200,7 @@ export async function deleteCategory(categoryId: string): Promise<void> {
   const category = await getCategory(categoryId);
   if (category.product_count > 0) {
     throw conflict(
-      `This category has ${category.product_count} product(s). Move them to another category or deactivate it instead`,
+      `This category has ${category.product_count} product(s). Remove it from those products or deactivate it instead`,
     );
   }
   const children = unwrap(await db.from('categories').select('id').eq('parent_id', categoryId).limit(1)) as unknown[];

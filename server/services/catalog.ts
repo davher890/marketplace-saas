@@ -1,5 +1,6 @@
 import { notFound } from '../http';
 import { supabase, unwrap } from '../supabase';
+import { productCategoriesEmbed, withCategoryIds } from './productCategories';
 
 // Public storefront catalog. Runs with the publishable key, so the RLS
 // policies decide what anyone may see (active categories, products, variants
@@ -9,19 +10,21 @@ import { supabase, unwrap } from '../supabase';
 type Row = Record<string, unknown>;
 
 type ProductRow = Row & {
+  category_id: string | null;
   product_variants: { position: number; is_active: boolean }[];
   product_images: { position: number }[];
+  product_categories?: { category_id: string; created_at: string }[];
 };
 
-const productSelect = '*, product_variants(*), product_images(*)';
+const productSelect = `*, product_variants(*), product_images(*), ${productCategoriesEmbed}`;
 
-/** Nested lists in display order, only active variants. */
-function shapeProduct(product: ProductRow): ProductRow {
+/** Nested lists in display order, only active variants, and `category_ids`. */
+function shapeProduct(product: ProductRow): ProductRow & { category_ids: string[] } {
   product.product_variants = product.product_variants
     .filter((v) => v.is_active)
     .sort((a, b) => a.position - b.position);
   product.product_images.sort((a, b) => a.position - b.position);
-  return product;
+  return withCategoryIds(product);
 }
 
 /** Active categories, in menu order. */
@@ -56,10 +59,22 @@ export interface ProductFilter {
   featured?: boolean;
 }
 
+/** Ids of the products listed in any of these categories. */
+async function productIdsIn(categories: string[]): Promise<string[]> {
+  const links = unwrap(
+    await supabase().from('product_categories').select('product_id').in('category_id', categories),
+  ) as { product_id: string }[];
+  return [...new Set(links.map((link) => link.product_id))];
+}
+
 /** Active products, newest first. */
 export async function listProducts(filter: ProductFilter): Promise<ProductRow[]> {
   let query = supabase().from('products').select(productSelect).eq('is_active', true);
-  if (filter.category) query = query.in('category_id', await categoryIds(filter.category));
+  if (filter.category) {
+    const ids = await productIdsIn(await categoryIds(filter.category));
+    if (ids.length === 0) return [];
+    query = query.in('id', ids);
+  }
   if (filter.featured) query = query.eq('is_featured', true);
   const rows = unwrap(await query.order('created_at', { ascending: false })) as ProductRow[];
   return rows.map(shapeProduct);
