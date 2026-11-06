@@ -6,6 +6,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Push notifications need Firebase's config file (README "Push notifications").
+// Without it the app builds and runs, just without notifications.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Upload key for Google Play, kept out of git (see README "Publish on Google Play").
 // Without android/key.properties, release builds are signed with the debug key:
 // fine to install on a phone, rejected by Google Play.

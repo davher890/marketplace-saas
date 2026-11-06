@@ -1,5 +1,5 @@
 /// Compile-time configuration, injected with `--dart-define` or
-/// `--dart-define-from-file=env.json` (see `env.example.json`).
+/// `--dart-define-from-file=env.json` (see README "Run the app").
 class Env {
   const Env._();
 

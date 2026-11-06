@@ -7,6 +7,7 @@ import * as categories from './services/categories';
 import * as orders from './services/orders';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
+import * as push from './services/push';
 import * as settings from './services/settings';
 import { supabaseAdmin } from './supabase';
 
@@ -62,6 +63,9 @@ export const router = new Router()
   .post('/api/checkout', async ({ request }) => {
     const user = await requireUser(request);
     const order = await orders.placeOrder(user, await readBody(request, orders.checkoutSchema));
+    // Awaited because Vercel may freeze the function once it responds; it
+    // never throws, so a failed notification doesn't fail the checkout.
+    await push.notifyAdminsOfOrder(order);
     return new Reply({ order }, 201);
   })
   .get('/api/orders', async ({ request }) => {
@@ -75,6 +79,12 @@ export const router = new Router()
   .post('/api/orders/:id/cancel', async ({ request, params }) => {
     const user = await requireUser(request);
     return orders.cancelOrder(user, params.id, await isAdmin(user));
+  })
+
+  // --- Admin: push notification devices -------------------------------------
+  .post('/api/admin/devices', async ({ request }) => {
+    const user = await requireAdmin(request);
+    return push.registerDevice(user, await readBody(request, push.registerDeviceSchema));
   })
 
   // --- Admin: orders --------------------------------------------------------
