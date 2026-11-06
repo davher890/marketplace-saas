@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_app_installations/firebase_app_installations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -51,11 +52,15 @@ abstract class PushMessaging {
   /// Asks for the notification permission (Android 13+). Whether it's granted.
   Future<bool> requestPermission();
 
-  /// Registers this install with FCM; the ID arrives through [onRegistered].
+  /// Registers this install with FCM for direct-send messages.
   Future<void> register();
 
-  /// Firebase Installation IDs (FIDs) to send to the API: after [register]
-  /// and whenever FCM assigns a new one.
+  /// This install's Firebase Installation ID (FID), the target the API sends to.
+  Future<String> installationId();
+
+  /// New FIDs assigned by FCM later on. Broadcast: an event sent before
+  /// anyone listens is lost (FCM registers at app start, before we know the
+  /// user is an admin), so the current FID comes from [installationId].
   Stream<String> get onRegistered;
 
   /// Stops this install from receiving pushes.
@@ -83,6 +88,9 @@ class FirebasePushMessaging implements PushMessaging {
 
   @override
   Future<void> register() => _messaging.register();
+
+  @override
+  Future<String> installationId() => FirebaseInstallations.instance.getId();
 
   @override
   Stream<String> get onRegistered => _messaging.onRegistered;
@@ -135,6 +143,7 @@ final adminPushProvider = Provider<void>((ref) {
     try {
       if (!await messaging.requestPermission()) return;
       await messaging.register();
+      await saveDevice(await messaging.installationId());
     } catch (error) {
       debugPrint('Push notifications unavailable: $error');
     }

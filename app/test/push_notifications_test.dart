@@ -24,10 +24,15 @@ class _FakeMessaging implements PushMessaging {
     return permission;
   }
 
+  /// FCM registers at app start, so register() emits nothing: the current
+  /// FID is only available from installationId().
   @override
-  Future<void> register() async {
-    calls.add('register');
-    registered.add('fid-1');
+  Future<void> register() async => calls.add('register');
+
+  @override
+  Future<String> installationId() async {
+    calls.add('installationId');
+    return 'fid-1';
   }
 
   @override
@@ -101,7 +106,7 @@ void main() {
     start();
     await settle();
     await settle();
-    expect(messaging.calls, ['permission', 'register']);
+    expect(messaging.calls, ['permission', 'register', 'installationId']);
     expect(requests.single.method, 'POST');
     expect(requests.single.url.path, '/api/admin/devices');
     expect(jsonDecode(requests.single.body), {
