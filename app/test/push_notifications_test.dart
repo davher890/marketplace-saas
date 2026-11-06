@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:dona_galleta/core/providers.dart';
+import 'package:dona_galleta/core/auth.dart';
 import 'package:dona_galleta/core/push_notifications.dart';
 import 'package:dona_galleta/repositories/api_client.dart';
 import 'package:dona_galleta/repositories/profile_repository.dart';
@@ -10,7 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Records what the app asks Firebase Messaging to do.
 class _FakeMessaging implements PushMessaging {
@@ -52,20 +51,14 @@ class _FakeMessaging implements PushMessaging {
 }
 
 /// Signed-in user, switchable from the test.
-class _User extends Notifier<User?> {
+class _User extends Notifier<AuthUser?> {
   @override
-  User? build() => const User(
-    id: 'u1',
-    appMetadata: {},
-    userMetadata: {},
-    aud: 'authenticated',
-    createdAt: '2026-11-07T00:00:00Z',
-  );
+  AuthUser? build() => const AuthUser(id: 'u1');
 
   void signOut() => state = null;
 }
 
-final _userProvider = NotifierProvider<_User, User?>(_User.new);
+final _userProvider = NotifierProvider<_User, AuthUser?>(_User.new);
 
 void main() {
   late _FakeMessaging messaging;
@@ -79,7 +72,6 @@ void main() {
     messaging = _FakeMessaging()..permission = permission;
     requests = [];
     final api = ApiClient(
-      SupabaseClient('http://localhost:54321', 'test-key'),
       baseUrl: 'https://shop.test',
       httpClient: MockClient((request) async {
         requests.add(request);

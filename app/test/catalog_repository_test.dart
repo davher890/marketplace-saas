@@ -5,16 +5,13 @@ import 'package:dona_galleta/repositories/catalog_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
-  final db = SupabaseClient('http://localhost:54321', 'test-key');
   final requests = <Uri>[];
 
   /// Answers like the API: 404 for unknown slugs, a product otherwise.
   CatalogRepository repository() => CatalogRepository(
     ApiClient(
-      db,
       baseUrl: 'https://shop.test',
       httpClient: MockClient((request) async {
         requests.add(request.url);

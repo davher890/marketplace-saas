@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/providers.dart';
+import '../core/auth.dart';
 import '../models/order.dart';
 import 'api_client.dart';
 

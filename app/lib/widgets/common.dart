@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/theme.dart';
 import '../models/order.dart';
+import '../repositories/api_client.dart';
 
 /// Renders loading / error / data states of an [AsyncValue] consistently.
 class AsyncView<T> extends StatelessWidget {
@@ -52,13 +52,38 @@ class AsyncView<T> extends StatelessWidget {
   }
 }
 
-/// Human readable message for Supabase / network errors.
+/// Spanish messages for the API's error codes (sign in, passwords...).
+const _errorMessages = {
+  'invalid_credentials': 'Email o contraseña incorrectos.',
+  'email_not_confirmed':
+      'Confirma tu email antes de entrar: revisa tu bandeja de entrada.',
+  'user_already_exists': 'Ya hay una cuenta con ese email.',
+  'email_exists': 'Ya hay una cuenta con ese email.',
+  'email_address_invalid': 'Email no válido.',
+  'weak_password': 'La contraseña es demasiado débil.',
+  'same_password': 'La nueva contraseña tiene que ser distinta de la actual.',
+  'wrong_password': 'La contraseña actual no es correcta.',
+  'current_password_required': 'Escribe tu contraseña actual.',
+  'over_request_rate_limit':
+      'Demasiados intentos. Espera unos minutos y vuelve a probar.',
+  'over_email_send_rate_limit':
+      'Demasiados emails enviados. Espera unos minutos y vuelve a probar.',
+  'signup_disabled': 'Ahora mismo no se pueden crear cuentas.',
+  'session_expired': 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+  'session_not_found': 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+  'refresh_token_not_found': 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+  'refresh_token_already_used':
+      'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+};
+
+/// Human readable message for API / network errors.
 String describeError(Object error) {
-  if (error is PostgrestException) return error.message;
-  if (error is AuthException) return error.message;
-  if (error is StorageException) return error.message;
+  if (error is ApiException) return _errorMessages[error.code] ?? error.message;
   return error.toString();
 }
+
+/// Shows snack bars from outside the widget tree (notifications, email links).
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void showMessage(BuildContext context, String message) {
   ScaffoldMessenger.of(context)

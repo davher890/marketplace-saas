@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AuthUser } from '../auth';
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, unwrap } from '../supabase';
+import { withImageUrls } from './images';
 import { getSettings, shippingFor } from './settings';
 
 // Everything here runs with the user's client (`user.db`): RLS guarantees a
@@ -73,8 +74,11 @@ export async function loadCartLines(user: AuthUser): Promise<{ lines: CartLine[]
     .filter((row) => isAvailable(row.product_variants))
     .map((row) => {
       const variant = row.product_variants!;
-      const images = (variant.products.product_images as { position: number }[] | undefined) ?? [];
-      images.sort((a, b) => a.position - b.position);
+      const images =
+        (variant.products.product_images as
+          | { position: number; url: string; storage_path: string | null }[]
+          | undefined) ?? [];
+      withImageUrls(images).sort((a, b) => a.position - b.position);
       return {
         id: row.id,
         quantity: row.quantity,

@@ -10,6 +10,8 @@ export interface AuthUser {
   fullName: string | null;
   /** Supabase client acting as this user: RLS applies to every query. */
   db: SupabaseClient;
+  /** The verified access token the request came with. */
+  accessToken: string;
 }
 
 function bearerToken(request: Request): string {
@@ -34,6 +36,7 @@ export async function requireUser(request: Request): Promise<AuthUser> {
     email: data.user.email ?? null,
     fullName: typeof fullName === 'string' && fullName.trim() ? fullName.trim() : null,
     db: supabaseForUser(token),
+    accessToken: token,
   };
 }
 

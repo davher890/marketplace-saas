@@ -9,6 +9,7 @@ import '../../core/theme.dart';
 import '../../models/category.dart';
 import '../../models/product.dart';
 import '../../repositories/admin_repository.dart';
+import '../../repositories/product_image_repository.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
 
@@ -652,9 +653,9 @@ class _ImagesEditorState extends ConsumerState<_ImagesEditor> {
     );
     if (files.isEmpty) return;
     await _run(() async {
-      final repo = ref.read(adminRepositoryProvider);
+      final images = ref.read(productImageRepositoryProvider);
       for (final file in files) {
-        await repo.uploadProductImage(
+        await images.upload(
           productId: widget.product.id,
           bytes: await file.readAsBytes(),
           fileName: file.name,
@@ -689,8 +690,8 @@ class _ImagesEditorState extends ConsumerState<_ImagesEditor> {
     if (url == null || !url.startsWith('http')) return;
     await _run(
       () => ref
-          .read(adminRepositoryProvider)
-          .addProductImageUrl(productId: widget.product.id, url: url),
+          .read(productImageRepositoryProvider)
+          .addUrl(productId: widget.product.id, url: url),
     );
   }
 
@@ -726,8 +727,8 @@ class _ImagesEditorState extends ConsumerState<_ImagesEditor> {
                           ? null
                           : () => _run(
                               () => ref
-                                  .read(adminRepositoryProvider)
-                                  .deleteProductImage(image),
+                                  .read(productImageRepositoryProvider)
+                                  .delete(image),
                             ),
                       icon: const Icon(Icons.close),
                     ),

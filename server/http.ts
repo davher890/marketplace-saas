@@ -5,6 +5,8 @@ export class HttpError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Machine-readable reason (e.g. `invalid_credentials`) for the app to translate. */
+    public readonly code?: string,
   ) {
     super(message);
   }
@@ -92,7 +94,8 @@ const postgresErrorStatus: Record<string, [number, string]> = {
 /** Converts any thrown error into a JSON error response. */
 export function errorResponse(request: Request, error: unknown): Response {
   if (error instanceof HttpError) {
-    return json(request, { error: error.message }, error.status);
+    const body = error.code ? { error: error.message, code: error.code } : { error: error.message };
+    return json(request, body, error.status);
   }
   const code = (error as { code?: string } | null)?.code;
   if (code && postgresErrorStatus[code]) {

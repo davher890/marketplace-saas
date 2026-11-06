@@ -2,8 +2,6 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { HttpError } from './http';
 
-export const PRODUCT_IMAGES_BUCKET = 'product-images';
-
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } } as const;
 
 function env(name: string): string {
@@ -22,6 +20,17 @@ let adminClient: SupabaseClient | undefined;
 export function supabase(): SupabaseClient {
   publicClient ??= createClient(env('SUPABASE_URL'), env('SUPABASE_PUBLISHABLE_KEY'), noSession);
   return publicClient;
+}
+
+/**
+ * New client with the publishable key for one Supabase Auth call (sign in,
+ * sign up, refresh...). A fresh one each time, so a session obtained for one
+ * request can never leak into another.
+ */
+export function supabaseAuth(): SupabaseClient {
+  return createClient(env('SUPABASE_URL'), env('SUPABASE_PUBLISHABLE_KEY'), {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
 }
 
 /**

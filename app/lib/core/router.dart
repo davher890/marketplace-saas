@@ -1,9 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/admin/admin_categories_screen.dart';
 import '../features/admin/admin_orders_screen.dart';
@@ -22,40 +19,27 @@ import '../features/orders/my_orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/shell/store_shell.dart';
 import '../repositories/profile_repository.dart';
-import 'providers.dart';
+import 'auth.dart';
 import 'theme.dart';
 
-/// Re-runs router redirects whenever a stream emits (used for auth changes).
-class _StreamListenable extends ChangeNotifier {
-  _StreamListenable(Stream<dynamic> stream) {
-    _subscription = stream.listen(
-      (_) => notifyListeners(),
-      // e.g. an expired recovery link: the screens show the signed-out state.
-      onError: (Object _) => notifyListeners(),
-    );
-  }
-
-  late final StreamSubscription<dynamic> _subscription;
-
-  @override
-  void dispose() {
-    _subscription.cancel();
-    super.dispose();
-  }
-}
-
 final routerProvider = Provider<GoRouter>((ref) {
-  final db = ref.watch(supabaseProvider);
-  final refresh = _StreamListenable(db.auth.onAuthStateChange);
+  // Re-runs the redirects when the user signs in or out.
+  final refresh = ValueNotifier(0);
+  ref.listen(currentUserProvider, (_, _) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
   const signedInOnly = ['/checkout', '/orders', '/profile'];
 
   final router = GoRouter(
     refreshListenable: refresh,
+    // A password recovery link sent from the Android app lands on the web
+    // app's home page (Supabase's Site URL): go straight to the form.
+    initialLocation: ref.read(authLinkProvider)?.isRecovery == true
+        ? '/reset-password'
+        : '/',
     redirect: (context, state) async {
       final path = state.uri.path;
-      final signedIn = db.auth.currentUser != null;
+      final signedIn = ref.read(currentUserProvider) != null;
 
       if (!signedIn &&
           (signedInOnly.any(path.startsWith) || path.startsWith('/admin'))) {
@@ -128,21 +112,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 
-  // A password recovery link signs the user in with a `passwordRecovery`
-  // event. Links redirected to `/reset-password` already land there; this
-  // covers links that open another page (e.g. Supabase's Site URL).
-  // `onAuthStateChange` replays past events, so the one emitted while
-  // Supabase was initializing is not missed.
-  final recovery = db.auth.onAuthStateChange.listen((state) {
-    if (state.event == AuthChangeEvent.passwordRecovery) {
-      // The replayed event can arrive while the router is still being built.
-      Future.microtask(() => router.go('/reset-password'));
-    }
-  }, onError: (Object _) {});
-  ref.onDispose(() {
-    recovery.cancel();
-    router.dispose();
-  });
+  ref.onDispose(router.dispose);
   return router;
 });
 

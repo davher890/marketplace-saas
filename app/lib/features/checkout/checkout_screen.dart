@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/money.dart';
-import '../../core/providers.dart';
+import '../../core/auth.dart';
 import '../../models/order.dart';
 import '../../repositories/cart_repository.dart';
 import '../../repositories/catalog_repository.dart';
@@ -20,9 +20,7 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _formKey = GlobalKey<FormState>();
   late final _name = TextEditingController(
-    text:
-        ref.read(currentUserProvider)?.userMetadata?['full_name'] as String? ??
-        '',
+    text: ref.read(currentUserProvider)?.fullName ?? '',
   );
   late final _email = TextEditingController(
     text: ref.read(currentUserProvider)?.email ?? '',

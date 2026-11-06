@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isAdmin, type AuthUser } from '../auth';
 import { conflict } from '../http';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
+import { verifyPassword } from './sessions';
 
 export interface Profile {
   id: string;
@@ -71,12 +72,20 @@ export async function updateProfile(
  * Deletes the user's account (Google Play requires apps to offer it). The
  * profile and cart go with it (`on delete cascade`); orders are kept, with
  * `user_id` set to null, because the shop must keep its sales records.
- * Admins are refused so the shop can't lose its last admin by accident.
+ * Admins are refused so the shop can't lose its last admin by accident, and
+ * the password is checked again.
  */
-export async function deleteAccount(user: AuthUser): Promise<{ deleted: true }> {
+export const deleteAccountSchema = z.object({ password: z.string().min(1).max(72) });
+
+export async function deleteAccount(
+  user: AuthUser,
+  input: z.infer<typeof deleteAccountSchema>,
+): Promise<{ deleted: true }> {
   if (await isAdmin(user)) {
     throw conflict('Admins cannot delete their account. Remove the admin role first.');
   }
+  // A stolen access token alone must not be enough to delete the account.
+  await verifyPassword(user, input.password);
   const { error } = await supabaseAdmin().auth.admin.deleteUser(user.id);
   check(error);
   return { deleted: true };
