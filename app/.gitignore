@@ -46,3 +46,4 @@ app.*.map.json
 
 # Local config with Supabase keys
 env.json
+env.local.json

@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/env.dart';
+import 'core/push_notifications.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 
@@ -22,7 +23,13 @@ Future<void> main() async {
     url: Env.supabaseUrl,
     publishableKey: Env.supabasePublishableKey,
   );
-  runApp(const ProviderScope(child: DonaGalletaApp()));
+  final pushEnabled = await initPushNotifications();
+  runApp(
+    ProviderScope(
+      overrides: [pushEnabledProvider.overrideWithValue(pushEnabled)],
+      child: const DonaGalletaApp(),
+    ),
+  );
 }
 
 class DonaGalletaApp extends ConsumerWidget {
@@ -30,8 +37,10 @@ class DonaGalletaApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(adminPushProvider);
     return MaterialApp.router(
       title: 'Doña Galleta',
+      scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: ref.watch(routerProvider),
@@ -54,7 +63,7 @@ class _MissingConfigApp extends StatelessWidget {
             child: Text(
               'Missing configuration.\n\n'
               'Run with: flutter run --dart-define-from-file=env.json\n'
-              '(copy env.example.json to env.json and fill in your Supabase keys)',
+              '(create env.json with SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY and API_BASE_URL)',
               textAlign: TextAlign.center,
             ),
           ),

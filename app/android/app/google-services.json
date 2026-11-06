@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1052132845587",
+    "project_id": "donagalleta-d1534",
+    "storage_bucket": "donagalleta-d1534.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1052132845587:android:9790a46f1e481951baf7e6",
+        "android_client_info": {
+          "package_name": "es.donagalleta.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDVgrFhCw5FRbQup0gT_ZXd0FD8dMGg5dg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

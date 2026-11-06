@@ -111,6 +111,7 @@ Flutter app ──(sign in / sign up / password)──────────�
 
 ```
 auth.users ─1:1─ profiles (role: customer | admin)
+     ├─1:N─ push_devices (admins' phones, for notifications)
      │
      ├─1:1─ carts ─1:N─ cart_items ──N:1─┐
      │                                   │
@@ -151,6 +152,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Categories: two levels (menu + dropdowns), unique slug, a parent must be a main category, new ones go last, reordered by swapping with a sibling. Deleting is refused while a category has products or sub-categories (deactivate it to hide it) | `categories.ts` |
 | Images uploaded straight to Storage with a signed URL from the API (JPG/PNG/WEBP/GIF only) | `products.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
+| New order: a push notification to every admin's Android device. A failed notification never fails the checkout; devices FCM no longer knows are removed | `push.ts` |
 | Profile: name and phone editable (phone validated); email fixed. Password change and recovery use Supabase Auth from the app, and a change asks for the current password | `profiles.ts`, app `profile_repository.dart` |
 
 ## Setup
@@ -166,6 +168,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…03_rls_policies.sql`: Row Level Security for every table.
    - `…04_product_categories.sql`: lets a product be in several categories, and
      links existing products to their current category.
+   - `…05_push_devices.sql`: the admins' devices for push notifications.
 
    All but the first are safe to run more than once.
 3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
@@ -193,6 +196,7 @@ Copy [`.env.example`](.env.example) to `.env` and fill in the values:
 | `SUPABASE_PUBLISHABLE_KEY` | Project Settings → API Keys → Publishable key (`sb_publishable_…`) |
 | `SUPABASE_SECRET_KEY` | Project Settings → API Keys → Secret keys (`sb_secret_…`). Server only |
 | `ALLOWED_ORIGINS` | Only for local development across origins |
+| `FIREBASE_SERVICE_ACCOUNT` | Optional: push notifications, see [Push notifications](#6-push-notifications-to-admins). Server only |
 
 ```bash
 npm install
@@ -201,11 +205,24 @@ npm run dev:api        # http://localhost:3000/api
 
 ### 3. Run the app
 
+Create `app/env.json` (gitignored) with the Supabase URL and publishable key
+(Project Settings → API):
+
+```json
+{
+  "SUPABASE_URL": "https://<project>.supabase.co",
+  "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_...",
+  "API_BASE_URL": "http://localhost:3000"
+}
+```
+
 ```bash
 cd app
-cp env.example.json env.json   # SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, API_BASE_URL
 flutter run -d chrome --web-port 8000 --dart-define-from-file=env.json
 ```
+
+`env.local.json` is also gitignored, handy to keep a second set of values (e.g. local
+API vs. production) and switch with `--dart-define-from-file=env.local.json`.
 
 `API_BASE_URL` is `http://localhost:3000` locally, or your Vercel URL. On Android it
 must always be set; on the deployed web app leave it empty to use the same origin.
@@ -274,6 +291,34 @@ value until the next upload.
 New personal developer accounts must run a closed test with at least 12 testers for 14
 days before publishing to production. Organisation accounts don't need to.
 
+### 6. Push notifications to admins
+
+When an order is placed, every admin gets a notification on Android. Tapping it
+opens the order. The API sends them with Firebase Cloud Messaging; until Firebase
+is set up, everything else works without them.
+
+1. In the [Firebase console](https://console.firebase.google.com), create a project.
+   Analytics isn't needed.
+2. **Add an Android app** with package name `es.donagalleta.app`. Download
+   `google-services.json` into `app/android/app/`. It isn't secret: it only says
+   which Firebase project the app belongs to.
+3. **Server key**: Project settings → Service accounts → *Generate new private key*.
+   Paste the whole JSON file, on one line, as `FIREBASE_SERVICE_ACCOUNT` in Vercel
+   (Production) and in your local `.env`. It is secret: never commit it.
+4. Run migration `…05_push_devices.sql` in Supabase.
+5. Rebuild the app. An admin who signs in is asked for permission to show
+   notifications, and the device is registered in `push_devices`.
+
+How it works:
+
+- The app registers its Firebase Installation ID (FID), FCM's replacement for
+  registration tokens. It does this only for admins, with
+  `POST /api/admin/devices`.
+- Signing out unregisters the device from FCM, so the next person using the phone
+  gets nothing. The API deletes devices that FCM rejects.
+- Android shows the notifications in the *Pedidos* channel (`MainActivity.kt`). If
+  the app is open, a message appears at the bottom instead, with a *Ver* button.
+
 ## Administrators
 
 The role lives in `public.profiles.role` (`customer` or `admin`) and nobody can change
@@ -332,6 +377,7 @@ All bodies are JSON in snake_case. Authenticated routes need
 | POST | `/api/orders/:id/cancel` | Cancel a pending order. |
 | GET | `/api/admin/orders?status=` | All orders. |
 | PATCH | `/api/admin/orders/:id` | `{status?, admin_notes?}`. |
+| POST | `/api/admin/devices` | Register this device for new-order notifications: `{fid, platform: "android"}`. |
 | GET / POST | `/api/admin/categories` | All categories (including inactive, with `product_count`) / create `{name, slug, parent_id, description, is_active}`. |
 | PUT / PATCH / DELETE | `/api/admin/categories/:id` | Replace / toggle `{is_active}` / delete (only if it has no products or sub-categories). |
 | POST | `/api/admin/categories/:id/move` | `{direction: "up" \| "down"}` among its siblings. |
