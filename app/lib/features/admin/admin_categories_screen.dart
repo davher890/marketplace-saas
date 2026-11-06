@@ -160,8 +160,8 @@ class _CategoryRow extends ConsumerWidget {
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     // The API refuses these too; explaining it here avoids a dead end.
     final blocker = category.productCount > 0
-        ? 'Tiene ${_products(category.productCount)}. Muévelos a otra '
-              'categoría o desactívala para ocultarla.'
+        ? 'Tiene ${_products(category.productCount)}. Quítala de esos '
+              'productos (desde cada producto) o desactívala para ocultarla.'
         : childCount > 0
         ? 'Tiene subcategorías. Muévelas o elimínalas primero.'
         : null;

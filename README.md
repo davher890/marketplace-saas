@@ -115,12 +115,16 @@ auth.users ─1:1─ profiles (role: customer | admin)
      └─1:N─ orders ─1:N─ order_items     │
               └─1:N─ order_status_history│
                                          ▼
-categories ─1:N─ products ─1:N─ product_variants
-  (tree)            └─1:N─ product_images
+categories ─N:M─ products ─1:N─ product_variants
+  (tree)  (product_categories) └─1:N─ product_images
 shop_settings (single row: shipping cost, free-shipping threshold, contact)
 ```
 
 - **Money** is stored as integer cents (EUR).
+- **Categories**: a product can be listed in several categories (`product_categories`).
+  `products.category_id` is its main one (shown in the admin list) and is always
+  among them. A category page lists the products of the category and its
+  sub-categories.
 - **Variants**: every product has at least one variant; customers buy variants.
   `options` is a JSON object such as `{"Talla": "2 años"}`. A variant can override the
   product price. `stock = NULL` means *made to order* (stock not tracked).
@@ -158,8 +162,10 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…02_defaults_and_storage.sql`: the default settings row and the
      `product-images` bucket.
    - `…03_rls_policies.sql`: Row Level Security for every table.
+   - `…04_product_categories.sql`: lets a product be in several categories, and
+     links existing products to their current category.
 
-   The last two are safe to run more than once.
+   All but the first are safe to run more than once.
 3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
    confirmation, password recovery) open the app:
    - **Site URL**: the deployed web app, e.g. `https://<your-vercel-domain>`. It is
@@ -272,7 +278,7 @@ All bodies are JSON in snake_case. Authenticated routes need
 | GET / POST | `/api/admin/categories` | All categories (including inactive, with `product_count`) / create `{name, slug, parent_id, description, is_active}`. |
 | PUT / PATCH / DELETE | `/api/admin/categories/:id` | Replace / toggle `{is_active}` / delete (only if it has no products or sub-categories). |
 | POST | `/api/admin/categories/:id/move` | `{direction: "up" \| "down"}` among its siblings. |
-| GET / POST | `/api/admin/products` | List all / create with `variants`. |
+| GET / POST | `/api/admin/products` | List all / create with `variants` and `category_ids` (the first is the main category). |
 | GET / PUT / PATCH / DELETE | `/api/admin/products/:id` | Read / replace with variants / toggle `is_active`, `is_featured` / delete. |
 | POST | `/api/admin/products/:id/images/upload-url` | Signed upload URL for `{file_name}`. |
 | POST | `/api/admin/products/:id/images` | Register `{storage_path}` or `{url}`. |

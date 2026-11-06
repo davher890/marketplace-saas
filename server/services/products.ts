@@ -4,22 +4,32 @@ import { z } from 'zod';
 
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, PRODUCT_IMAGES_BUCKET, supabaseAdmin, unwrap } from '../supabase';
+import {
+  assertCategoriesExist,
+  normalizeCategoryIds,
+  productCategoriesEmbed,
+  syncProductCategories,
+  withCategoryIds,
+} from './productCategories';
 
 // Admin panel only: every function here is called after the route checked the
 // admin role, and uses the service-role client (it must see inactive items).
 
 export type Product = Record<string, unknown> & {
   id: string;
+  category_id: string | null;
   product_variants: { id: string; position: number }[];
   product_images: { id: string; position: number; storage_path: string | null }[];
+  product_categories?: { category_id: string; created_at: string }[];
 };
 
-const productSelect = '*, product_variants(*), product_images(*)';
+const productSelect = `*, product_variants(*), product_images(*), ${productCategoriesEmbed}`;
 
-function sortNested(product: Product): Product {
+/** Nested lists in display order, and `category_ids` (main category first). */
+function sortNested(product: Product): Product & { category_ids: string[] } {
   product.product_variants.sort((a, b) => a.position - b.position);
   product.product_images.sort((a, b) => a.position - b.position);
-  return product;
+  return withCategoryIds(product);
 }
 
 /** Every product, active or not. */
@@ -69,7 +79,10 @@ const variantSchema = z.object({
 });
 
 export const productSchema = z.object({
+  /** Main category. Ignored when `category_ids` is sent (its first item wins). */
   category_id: z.uuid().nullable().default(null),
+  /** Every category the product is listed in; the first one is the main one. */
+  category_ids: z.array(z.uuid()).max(20).optional(),
   name: z.string().trim().min(1, 'Name is required').max(200),
   slug: z
     .string()
@@ -92,8 +105,13 @@ export type ProductInput = z.infer<typeof productSchema>;
  * SKUs, variants that belong to another product) before writing anything,
  * since supabase-js can't wrap the writes in a transaction.
  */
-async function validateBeforeSave(productId: string | null, input: ProductInput): Promise<void> {
+async function validateBeforeSave(
+  productId: string | null,
+  input: ProductInput,
+  categoryIds: string[],
+): Promise<void> {
   const db = supabaseAdmin();
+  await assertCategoriesExist(db, categoryIds);
 
   let slugQuery = db.from('products').select('id').eq('slug', input.slug);
   if (productId) slugQuery = slugQuery.neq('id', productId);
@@ -133,28 +151,36 @@ function explainUniqueViolation(error: unknown): never {
 /**
  * Creates a product (when `productId` is null) or updates it, and syncs its
  * variants: variants missing from the input are deleted, the rest are updated
- * or inserted in the given order. A new product is deleted again if its
- * variants can't be saved.
+ * or inserted in the given order. Its categories are synced the same way.
+ * A new product is deleted again if its variants or categories can't be saved.
  */
 export async function saveProduct(productId: string | null, input: ProductInput): Promise<Product> {
   const db = supabaseAdmin();
-  const { variants, ...fields } = input;
+  const { variants, category_ids: _categoryIds, ...fields } = input;
+  const categoryIds = normalizeCategoryIds(input);
   const row = {
     ...fields,
+    category_id: categoryIds[0] ?? null,
     customization_label: fields.is_customizable ? fields.customization_label : null,
   };
 
   if (productId) await getProduct(productId); // 404 before validating
-  await validateBeforeSave(productId, input);
+  await validateBeforeSave(productId, input, categoryIds);
 
   try {
     if (productId === null) {
       const created = unwrap(await db.from('products').insert(row).select('id').single()) as { id: string };
-      const { error } = await db
-        .from('product_variants')
-        .insert(variants.map(({ id: _id, ...v }, position) => ({ ...v, position, product_id: created.id })));
-      if (error) {
-        await db.from('products').delete().eq('id', created.id);
+      try {
+        check(
+          (
+            await db
+              .from('product_variants')
+              .insert(variants.map(({ id: _id, ...v }, position) => ({ ...v, position, product_id: created.id })))
+          ).error,
+        );
+        await syncProductCategories(db, created.id, categoryIds);
+      } catch (error) {
+        await db.from('products').delete().eq('id', created.id); // variants and links cascade
         throw error;
       }
       return getProduct(created.id);
@@ -177,6 +203,7 @@ export async function saveProduct(productId: string | null, input: ProductInput)
         : await db.from('product_variants').insert({ ...variant, position, product_id: productId });
       check(error);
     }
+    await syncProductCategories(db, productId, categoryIds);
     return getProduct(productId);
   } catch (error) {
     explainUniqueViolation(error);

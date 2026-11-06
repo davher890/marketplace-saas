@@ -23,9 +23,13 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
   Widget build(BuildContext context) {
     final products = ref.watch(adminProductsProvider);
     final categories = ref.watch(adminCategoriesProvider).value ?? const [];
-    String categoryName(String? id) =>
-        categories.where((c) => c.id == id).firstOrNull?.name ??
-        'Sin categoría';
+    String categoryNames(List<String> ids) {
+      final names = [
+        for (final id in ids)
+          ?categories.where((c) => c.id == id).firstOrNull?.name,
+      ];
+      return names.isEmpty ? 'Sin categoría' : names.join(', ');
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -76,7 +80,7 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _ProductRow(
                           product: product,
-                          categoryName: categoryName(product.categoryId),
+                          categoryName: categoryNames(product.categoryIds),
                         ),
                       ),
                   ],

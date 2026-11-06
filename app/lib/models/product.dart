@@ -5,6 +5,7 @@ class Product {
     required this.slug,
     required this.basePriceCents,
     this.categoryId,
+    this.categoryIds = const [],
     this.description,
     this.isCustomizable = false,
     this.customizationLabel,
@@ -15,7 +16,12 @@ class Product {
   });
 
   final String id;
+
+  /// Main category: the first of [categoryIds].
   final String? categoryId;
+
+  /// Every category the product is listed in, main one first.
+  final List<String> categoryIds;
   final String name;
   final String slug;
   final String? description;
@@ -64,6 +70,10 @@ class Product {
     return Product(
       id: json['id'] as String,
       categoryId: json['category_id'] as String?,
+      // Older API responses only had the main category.
+      categoryIds:
+          (json['category_ids'] as List?)?.cast<String>() ??
+          [if (json['category_id'] != null) json['category_id'] as String],
       name: json['name'] as String,
       slug: json['slug'] as String,
       description: json['description'] as String?,
@@ -79,7 +89,8 @@ class Product {
 
   /// Product fields for the admin API (variants are sent alongside).
   Map<String, dynamic> toJson() => {
-    'category_id': categoryId,
+    'category_id': categoryIds.firstOrNull ?? categoryId,
+    'category_ids': categoryIds,
     'name': name,
     'slug': slug,
     'description': description,

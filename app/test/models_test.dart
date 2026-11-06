@@ -25,6 +25,45 @@ void main() {
     });
   });
 
+  group('Product categories', () {
+    Map<String, dynamic> json(Map<String, dynamic> extra) => {
+      'id': 'p1',
+      'name': 'Pack',
+      'slug': 'pack',
+      'base_price_cents': 2000,
+      ...extra,
+    };
+
+    test('reads every category, main one first', () {
+      final product = Product.fromJson(
+        json({
+          'category_id': 'ideas',
+          'category_ids': ['ideas', 'profes'],
+        }),
+      );
+      expect(product.categoryId, 'ideas');
+      expect(product.categoryIds, ['ideas', 'profes']);
+    });
+
+    test('falls back to the single category of older responses', () {
+      expect(Product.fromJson(json({'category_id': 'ideas'})).categoryIds, [
+        'ideas',
+      ]);
+      expect(Product.fromJson(json({})).categoryIds, isEmpty);
+    });
+
+    test('sends the main category and the full list', () {
+      final body = Product.fromJson(
+        json({
+          'category_id': 'ideas',
+          'category_ids': ['ideas', 'profes'],
+        }),
+      ).toJson();
+      expect(body['category_id'], 'ideas');
+      expect(body['category_ids'], ['ideas', 'profes']);
+    });
+  });
+
   group('Product', () {
     final product = Product.fromJson({
       'id': 'p1',

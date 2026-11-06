@@ -81,7 +81,9 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   late final _optionName = TextEditingController(
     text: _p?.variants.expand((v) => v.options.keys).firstOrNull ?? '',
   );
-  late String? _categoryId = _p?.categoryId;
+
+  /// Categories the product is listed in; the first one is its main one.
+  late final List<String> _categoryIds = [...?_p?.categoryIds];
   late bool _isActive = _p?.isActive ?? true;
   late bool _isFeatured = _p?.isFeatured ?? false;
   late bool _isCustomizable = _p?.isCustomizable ?? false;
@@ -132,7 +134,8 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     ];
     final row = Product(
       id: _p?.id ?? '',
-      categoryId: _categoryId,
+      categoryId: _categoryIds.firstOrNull,
+      categoryIds: List.of(_categoryIds),
       name: _name.text.trim(),
       slug: _slug.text.trim(),
       description: _description.text.trim().isEmpty
@@ -204,25 +207,80 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     }
   }
 
-  /// Categories ordered as a tree: parents followed by their children.
-  List<DropdownMenuItem<String?>> _categoryItems() {
-    final items = <DropdownMenuItem<String?>>[
-      const DropdownMenuItem(value: null, child: Text('Sin categoría')),
-    ];
-    for (final node in CategoryNode.buildTree(widget.categories)) {
-      items.add(
-        DropdownMenuItem(
-          value: node.category.id,
-          child: Text(node.category.name),
+  /// Categories ordered as a tree: parents followed by their children,
+  /// with sub-categories labelled "Parent › Child".
+  List<(Category, String)> _categoryChoices() => [
+    for (final node in CategoryNode.buildTree(widget.categories)) ...[
+      (node.category, node.category.name),
+      for (final child in node.children)
+        (child, '${node.category.name} › ${child.name}'),
+    ],
+  ];
+
+  void _toggleCategory(String id, bool selected) => setState(() {
+    selected ? _categoryIds.add(id) : _categoryIds.remove(id);
+  });
+
+  void _makeMain(String? id) => setState(() {
+    if (id == null) return;
+    _categoryIds
+      ..remove(id)
+      ..insert(0, id);
+  });
+
+  Widget _categoriesField() {
+    final choices = _categoryChoices();
+    String label(String id) =>
+        choices.where((c) => c.$1.id == id).firstOrNull?.$2 ?? '—';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'Categorías',
+            helperText:
+                'Puedes elegir varias. Sin ninguna, no sale en el menú.',
+          ),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final (category, name) in choices)
+                FilterChip(
+                  label: Text(name),
+                  selected: _categoryIds.contains(category.id),
+                  // Same look as the other chips: cream on dark green.
+                  labelStyle: TextStyle(
+                    color: _categoryIds.contains(category.id)
+                        ? AppColors.cream
+                        : AppColors.ink,
+                  ),
+                  checkmarkColor: AppColors.cream,
+                  onSelected: (selected) =>
+                      _toggleCategory(category.id, selected),
+                ),
+            ],
+          ),
         ),
-      );
-      for (final child in node.children) {
-        items.add(
-          DropdownMenuItem(value: child.id, child: Text('    ${child.name}')),
-        );
-      }
-    }
-    return items;
+        if (_categoryIds.length > 1) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: ValueKey(_categoryIds.join(',')),
+            initialValue: _categoryIds.first,
+            items: [
+              for (final id in _categoryIds)
+                DropdownMenuItem(value: id, child: Text(label(id))),
+            ],
+            onChanged: _makeMain,
+            decoration: const InputDecoration(
+              labelText: 'Categoría principal',
+              helperText: 'La que se muestra en la lista de productos.',
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -282,12 +340,9 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     ? null
                     : 'Solo minúsculas, números y guiones',
               ),
-              DropdownButtonFormField<String?>(
-                initialValue: _categoryId,
-                items: _categoryItems(),
-                onChanged: (v) => setState(() => _categoryId = v),
-                decoration: const InputDecoration(labelText: 'Categoría'),
-              ),
+              const SizedBox(height: 8),
+              _categoriesField(),
+              const SizedBox(height: 8),
               TextFormField(
                 controller: _price,
                 decoration: const InputDecoration(labelText: 'Precio (€) *'),
