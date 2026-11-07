@@ -1,9 +1,10 @@
-import { isAdmin, requireAdmin, requireUser } from './auth';
+import { isAdmin, optionalUser, requireAdmin, requireUser } from './auth';
 import { readBody, Reply } from './http';
 import { Router } from './router';
 import * as cart from './services/cart';
 import * as catalog from './services/catalog';
 import * as categories from './services/categories';
+import * as orderEmails from './services/orderEmails';
 import * as orders from './services/orders';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
@@ -87,9 +88,9 @@ export const router = new Router()
   .post('/api/checkout', async ({ request }) => {
     const user = await requireUser(request);
     const order = await orders.placeOrder(user, await readBody(request, orders.checkoutSchema));
-    // Awaited because Vercel may freeze the function once it responds; it
-    // never throws, so a failed notification doesn't fail the checkout.
-    await push.notifyAdminsOfOrder(order);
+    // Awaited because Vercel may freeze the function once it responds. They
+    // never throw, so a failed notification or email doesn't fail the checkout.
+    await Promise.all([push.notifyAdminsOfOrder(order), orderEmails.sendNewOrderEmails(order)]);
     return new Reply({ order }, 201);
   })
   .get('/api/orders', async ({ request }) => {
@@ -105,7 +106,12 @@ export const router = new Router()
     return orders.cancelOrder(user, params.id, await isAdmin(user));
   })
 
-  // --- Admin: push notification devices -------------------------------------
+  // --- Push notification devices (any app install, signed in or not) --------
+  .post('/api/devices', async ({ request }) => {
+    const user = await optionalUser(request);
+    return push.registerDevice(user, await readBody(request, push.registerDeviceSchema));
+  })
+  // Older app builds register here (admins only).
   .post('/api/admin/devices', async ({ request }) => {
     const user = await requireAdmin(request);
     return push.registerDevice(user, await readBody(request, push.registerDeviceSchema));
