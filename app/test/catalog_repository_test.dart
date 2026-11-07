@@ -50,11 +50,34 @@ void main() {
 
     expect(requests.map((u) => u.toString()), [
       'https://shop.test/api/categories',
-      'https://shop.test/api/products?featured=true',
-      'https://shop.test/api/products?category=bebe',
+      'https://shop.test/api/products?featured=true&sort=price',
+      'https://shop.test/api/products?category=bebe&sort=price',
       'https://shop.test/api/products/cojin-nube',
       'https://shop.test/api/settings',
     ]);
+  });
+
+  test(
+    'asks the API for the chosen order (cheapest first by default)',
+    () async {
+      final repo = repository();
+      await repo.fetchProducts(categorySlug: 'bebe', sort: ProductSort.name);
+      await repo.fetchProducts(
+        categorySlug: 'bebe',
+        sort: ProductSort.priceDesc,
+      );
+      expect(requests.map((u) => u.queryParameters['sort']), [
+        'name',
+        'price_desc',
+      ]);
+    },
+  );
+
+  test('the URL value maps to a sort, unknown ones to the default', () {
+    expect(ProductSort.fromUrl('nombre'), ProductSort.name);
+    expect(ProductSort.fromUrl('precio-desc'), ProductSort.priceDesc);
+    expect(ProductSort.fromUrl(null), ProductSort.price);
+    expect(ProductSort.fromUrl('cualquiera'), ProductSort.price);
   });
 
   test('unknown product or category is empty, not an error', () async {

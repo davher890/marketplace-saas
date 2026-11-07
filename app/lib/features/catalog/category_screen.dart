@@ -7,9 +7,16 @@ import '../../widgets/common.dart';
 import 'product_card.dart';
 
 class CategoryScreen extends ConsumerWidget {
-  const CategoryScreen({super.key, required this.slug});
+  const CategoryScreen({
+    super.key,
+    required this.slug,
+    this.sort = ProductSort.standard,
+  });
 
   final String slug;
+
+  /// From the page address (`?orden=`), so it survives reloads and sharing.
+  final ProductSort sort;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,7 +27,8 @@ class CategoryScreen extends ConsumerWidget {
         : categories
               .where((c) => c.parentId == category.id && c.isActive)
               .toList();
-    final products = ref.watch(categoryProductsProvider(slug));
+    final key = (slug: slug, sort: sort);
+    final products = ref.watch(categoryProductsProvider(key));
 
     return ContentWidth(
       child: Column(
@@ -48,13 +56,54 @@ class CategoryScreen extends ConsumerWidget {
                 ],
               ),
             ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _SortMenu(
+                sort: sort,
+                onChanged: (value) => context.go(
+                  value == ProductSort.standard
+                      ? '/c/$slug'
+                      : '/c/$slug?orden=${value.urlValue}',
+                ),
+              ),
+            ),
+          ),
           AsyncView(
             value: products,
-            onRetry: () => ref.invalidate(categoryProductsProvider(slug)),
+            onRetry: () => ref.invalidate(categoryProductsProvider(key)),
             builder: (items) => ProductGrid(products: items),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "Ordenar por" selector above the product grid.
+class _SortMenu extends StatelessWidget {
+  const _SortMenu({required this.sort, required this.onChanged});
+
+  final ProductSort sort;
+  final ValueChanged<ProductSort> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownMenu<ProductSort>(
+      key: ValueKey(sort),
+      initialSelection: sort,
+      label: const Text('Ordenar por'),
+      // Wide enough for the longest option ("Precio: de menor a mayor").
+      width: 300,
+      requestFocusOnTap: false,
+      onSelected: (value) {
+        if (value != null && value != sort) onChanged(value);
+      },
+      dropdownMenuEntries: [
+        for (final option in ProductSort.values)
+          DropdownMenuEntry(value: option, label: option.label),
+      ],
     );
   }
 }
