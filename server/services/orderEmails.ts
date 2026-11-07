@@ -4,8 +4,10 @@ import type { Order, OrderStatus } from './orders';
 import { getSettings } from './settings';
 
 // Emails about orders, in Spanish:
-// - to the admins, when an order is placed (besides the push notification);
-// - to the customer, when they place it and whenever its status changes.
+// - to the shop's mailbox (the contact email in the admin settings) and to
+//   every admin, when an order is placed, besides the push notification;
+// - to the email the customer gave in the order (`contact_email`), when they
+//   place it and whenever its status changes.
 // None of them throws: a failed email never fails the order or the change.
 //
 // SITE_URL (e.g. https://www.xn--doagalleta-u9a.es) adds links to the order.
@@ -147,6 +149,21 @@ async function adminEmails(): Promise<string[]> {
   return users.map((result) => result.data.user?.email).filter((email): email is string => Boolean(email));
 }
 
+/**
+ * Who hears about a new order: the shop's mailbox (the contact email in the
+ * admin settings, donagalletashop@gmail.com, or else the account that sends
+ * the emails) and every admin. Each address once.
+ */
+export function newOrderRecipients(shopEmail: string | null | undefined, admins: string[]): string[] {
+  const seen = new Set<string>();
+  return [shopEmail, ...admins].filter((email): email is string => {
+    const key = email?.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function newOrderAdminEmail(order: OrderDetails) {
   const subject = `Nuevo pedido #${order.order_number} · ${order.shipping_name} · ${money(order.total_cents)}`;
   const contact = [order.contact_email, order.shipping_phone].filter(Boolean).map(escapeHtml).join(' · ');
@@ -200,18 +217,18 @@ export function orderReceivedEmail(order: OrderDetails) {
 }
 
 /**
- * Tells the admins (and the customer) about a new order. Awaited by the
- * checkout route, so it finishes before Vercel freezes the function.
+ * Tells the shop and the admins (see [newOrderRecipients]) and the customer
+ * about a new order. Awaited by the checkout route, so it finishes before
+ * Vercel freezes the function.
  */
 export async function sendNewOrderEmails(order: Order): Promise<void> {
   try {
     const details = order as unknown as OrderDetails;
     const settings = await getSettings();
-    let admins = await adminEmails();
-    if (admins.length === 0 && settings.contact_email) admins = [settings.contact_email];
+    const shop = newOrderRecipients(settings.contact_email || process.env.SMTP_USER, await adminEmails());
     await Promise.all([
-      admins.length > 0
-        ? sendEmail({ to: admins, replyTo: details.contact_email ?? undefined, ...newOrderAdminEmail(details) })
+      shop.length > 0
+        ? sendEmail({ to: shop, replyTo: details.contact_email ?? undefined, ...newOrderAdminEmail(details) })
         : Promise.resolve(false),
       details.contact_email
         ? sendEmail({
