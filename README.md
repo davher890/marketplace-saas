@@ -171,7 +171,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Sign in, sign up, sessions: Supabase Auth called only from the API, with a new client per call. Errors keep Supabase's code (`invalid_credentials`...) for the app to show in Spanish. Password recovery answers the same for any email | `sessions.ts` |
 | Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
-| New order: a push notification to every admin's Android device, and an email to the admins (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
+| New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
 | Status change: the customer gets an email for paid, in preparation, shipped, delivered and cancelled (not for going back to pending) | `orders.ts`, `orderEmails.ts` |
 | Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
 | Password change: needs the current password, except within an hour of opening a recovery link. Supabase then ends every session of the user, so the API returns a new one for this device. Deleting the account also asks for the password | `sessions.ts`, `profiles.ts` |
@@ -405,7 +405,8 @@ How it works:
 
 ### 8. Emails
 
-The API emails the admins when an order is placed (besides the push notification).
+The API emails the shop's mailbox (the contact email in *Administración → Ajustes*)
+and every admin when an order is placed (besides the push notification).
 It emails the customer when they place it and whenever its status changes: paid, in
 preparation, shipped, delivered, cancelled. It sends plain SMTP through the shop's
 Gmail account. Without `SMTP_HOST`, nothing is sent and everything else works.
@@ -427,8 +428,9 @@ How it works:
   how emails are sent. Moving to Brevo, IONOS or Resend means changing the `SMTP_*`
   variables, or that file.
 - [`server/services/orderEmails.ts`](server/services/orderEmails.ts) has the texts.
-  Everything the customer typed is escaped. Admins' emails come from Supabase Auth
-  (users with the admin role); if there are none, the shop's contact email is used.
+  Everything the customer typed is escaped. A new order goes to the shop's contact
+  email (or `SMTP_USER` if it's empty) and to every admin (from Supabase Auth), each
+  address once. The customer's emails go to the email they gave in the order.
 - The customer's replies go to the shop's contact email, and the admins' replies go
   to the customer.
 - Gmail allows about 500 recipients a day, plenty for the shop.
