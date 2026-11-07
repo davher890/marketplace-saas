@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
+import '../shell/store_shell.dart';
 import 'product_card.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -27,22 +28,25 @@ class HomeScreen extends ConsumerWidget {
             style: textTheme.displayMedium?.copyWith(color: AppColors.forest),
           ),
           const SizedBox(height: 24),
-          tree.when(
-            data: (nodes) => Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final node in nodes)
-                  ActionChip(
-                    label: Text(node.category.name),
-                    onPressed: () => context.go('/c/${node.category.slug}'),
-                  ),
-              ],
+          // Quick links to the categories, only on narrow screens: wider
+          // ones already show them in the header menu.
+          if (!StoreShell.isWide(context))
+            tree.when(
+              data: (nodes) => Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final node in nodes)
+                    ActionChip(
+                      label: Text(node.category.name),
+                      onPressed: () => context.go('/c/${node.category.slug}'),
+                    ),
+                ],
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
             ),
-            loading: () => const SizedBox.shrink(),
-            error: (_, _) => const SizedBox.shrink(),
-          ),
           const SectionTitle('Destacados'),
           AsyncView(
             value: featured,

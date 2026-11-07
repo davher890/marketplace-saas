@@ -19,11 +19,16 @@ class StoreShell extends ConsumerWidget {
 
   final Widget child;
 
-  static const _wideBreakpoint = 900.0;
+  /// From this width the header shows the category menu; below it, the
+  /// menu is in the drawer.
+  static const wideBreakpoint = 900.0;
+
+  static bool isWide(BuildContext context) =>
+      MediaQuery.sizeOf(context).width >= wideBreakpoint;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isWide = MediaQuery.sizeOf(context).width >= _wideBreakpoint;
+    final isWide = StoreShell.isWide(context);
     final tree = ref.watch(categoryTreeProvider).value ?? const [];
 
     return Scaffold(
