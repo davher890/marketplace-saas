@@ -5,6 +5,7 @@ import type { AuthUser } from '../auth';
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
+import { sendStatusChangeEmail } from './orderEmails';
 import { getSettings, shippingFor } from './settings';
 import { releaseStock, reserveStock } from './stock';
 
@@ -208,8 +209,8 @@ function orderQuantities(order: Order): Map<string, number> {
  * has the status we read (compare-and-swap), so two simultaneous changes
  * can't both win, and a cancellation can't give stock back twice.
  */
-async function transition(order: Order, to: OrderStatus, actorId: string): Promise<void> {
-  if (order.status === to) return;
+async function transition(order: Order, to: OrderStatus, actorId: string): Promise<boolean> {
+  if (order.status === to) return false;
   if (order.status === 'cancelled') throw conflict('Cancelled orders cannot change status');
 
   const changes: Record<string, unknown> = { status: to, updated_at: now() };
@@ -228,14 +229,17 @@ async function transition(order: Order, to: OrderStatus, actorId: string): Promi
 
   await recordStatusChange(order.id, order.status, to, actorId);
   if (to === 'cancelled') await releaseStock(orderQuantities(order));
+  return true;
 }
 
 /** Customers may cancel their own pending orders; admins can cancel any order. */
 export async function cancelOrder(user: AuthUser, orderId: string, admin: boolean): Promise<Order> {
   const order = await getOrderFor(user, orderId, admin);
   if (!admin && order.status !== 'pending') throw conflict('Only pending orders can be cancelled');
-  await transition(order, 'cancelled', user.id);
-  return (await getOrder(supabaseAdmin(), orderId))!;
+  const changed = await transition(order, 'cancelled', user.id);
+  const updated = (await getOrder(supabaseAdmin(), orderId))!;
+  if (changed) await sendStatusChangeEmail(updated);
+  return updated;
 }
 
 export const adminUpdateOrderSchema = z
@@ -256,7 +260,7 @@ export async function adminUpdateOrder(
   const order = await getOrder(db, orderId);
   if (!order) throw notFound('Order not found');
 
-  if (input.status) await transition(order, input.status, admin.id);
+  const changed = input.status ? await transition(order, input.status, admin.id) : false;
   if (input.admin_notes !== undefined) {
     check(
       (
@@ -267,7 +271,10 @@ export async function adminUpdateOrder(
       ).error,
     );
   }
-  return (await getOrder(db, orderId))!;
+  const updated = (await getOrder(db, orderId))!;
+  // Awaited so it finishes before Vercel freezes the function; never throws.
+  if (changed) await sendStatusChangeEmail(updated);
+  return updated;
 }
 
 export function parseStatus(value: string | null): OrderStatus | undefined {

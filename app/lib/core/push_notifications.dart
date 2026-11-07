@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../repositories/api_client.dart';
 import '../repositories/order_repository.dart';
-import '../repositories/profile_repository.dart';
 import '../widgets/common.dart';
 import 'auth.dart';
 import 'router.dart';
@@ -111,10 +110,12 @@ final pushMessagingProvider = Provider<PushMessaging>(
   (ref) => FirebasePushMessaging(),
 );
 
-/// Watched by the app root. While an admin is signed in, this device is
-/// registered with the API; on sign out it's unregistered from FCM so the
-/// next person using the phone doesn't get the shop's notifications.
-final adminPushProvider = Provider<void>((ref) {
+/// Watched by the app root. Asks everyone for the notification permission
+/// when the app opens and registers this install with the API, linked to
+/// whoever is signed in (or to nobody). The device is registered again when
+/// the user changes, so after signing out it no longer gets an admin's
+/// notices; new-order notices only go to admins' devices (server side).
+final pushRegistrationProvider = Provider<void>((ref) {
   if (!ref.watch(pushEnabledProvider)) return;
   final messaging = ref.watch(pushMessagingProvider);
   final api = ref.watch(apiClientProvider);
@@ -127,16 +128,20 @@ final adminPushProvider = Provider<void>((ref) {
     registrations?.cancel();
   });
 
-  Future<void> saveDevice(String fid) async {
+  String? fid;
+
+  /// Sends the session token if there is one, so the API links the device to
+  /// that user; without it the device belongs to nobody.
+  Future<void> saveDevice(String id) async {
+    fid = id;
     try {
-      await api.post('/api/admin/devices', {'fid': fid, 'platform': 'android'});
+      await api.post('/api/devices', {'fid': id, 'platform': 'android'});
     } catch (error) {
       debugPrint('Could not register for push notifications: $error');
     }
   }
 
-  ref.listen(isAdminProvider, (_, next) async {
-    if (next.value != true || registrations != null) return;
+  Future<void> start() async {
     registrations = messaging.onRegistered.listen(saveDevice);
     try {
       if (!await messaging.requestPermission()) return;
@@ -145,15 +150,14 @@ final adminPushProvider = Provider<void>((ref) {
     } catch (error) {
       debugPrint('Push notifications unavailable: $error');
     }
-  }, fireImmediately: true);
+  }
+
+  start();
 
   ref.listen(currentUserProvider, (previous, next) {
-    if (previous == null || next != null) return;
-    registrations?.cancel();
-    registrations = null;
-    messaging.unregister().catchError(
-      (Object error) => debugPrint('Could not unregister from FCM: $error'),
-    );
+    if (previous?.id == next?.id) return;
+    final id = fid;
+    if (id != null) saveDevice(id);
   });
 
   void open(RemoteMessage? message) {

@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:dona_galleta/core/auth.dart';
 import 'package:dona_galleta/core/push_notifications.dart';
 import 'package:dona_galleta/repositories/api_client.dart';
-import 'package:dona_galleta/repositories/profile_repository.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,61 +49,115 @@ class _FakeMessaging implements PushMessaging {
   Future<RemoteMessage?> getInitialMessage() async => null;
 }
 
-/// Signed-in user, switchable from the test.
+/// Who is signed in, switchable from the test.
 class _User extends Notifier<AuthUser?> {
-  @override
-  AuthUser? build() => const AuthUser(id: 'u1');
+  _User(this.initial);
 
+  final AuthUser? initial;
+
+  @override
+  AuthUser? build() => initial;
+
+  void signIn(String id) => state = AuthUser(id: id);
   void signOut() => state = null;
 }
 
-final _userProvider = NotifierProvider<_User, AuthUser?>(_User.new);
+/// Gives the API client the signed-in user's token, like AuthController.
+class _Tokens implements TokenSource {
+  _Tokens(this.read);
+
+  final AuthUser? Function() read;
+
+  @override
+  Future<String?> accessToken() async {
+    final user = read();
+    return user == null ? null : 'token-${user.id}';
+  }
+
+  @override
+  Future<String?> refreshedAccessToken() => accessToken();
+}
 
 void main() {
   late _FakeMessaging messaging;
   late List<http.Request> requests;
+  late NotifierProvider<_User, AuthUser?> userProvider;
 
   ProviderContainer start({
-    bool isAdmin = true,
+    AuthUser? signedIn,
     bool enabled = true,
     bool permission = true,
   }) {
     messaging = _FakeMessaging()..permission = permission;
     requests = [];
+    userProvider = NotifierProvider<_User, AuthUser?>(() => _User(signedIn));
+    late ProviderContainer container;
     final api = ApiClient(
+      tokens: _Tokens(() => container.read(userProvider)),
       baseUrl: 'https://shop.test',
       httpClient: MockClient((request) async {
         requests.add(request);
         return http.Response('{"registered":true}', 200);
       }),
     );
-    final container = ProviderContainer(
+    container = ProviderContainer(
       overrides: [
         pushEnabledProvider.overrideWithValue(enabled),
         pushMessagingProvider.overrideWithValue(messaging),
         apiClientProvider.overrideWithValue(api),
-        currentUserProvider.overrideWith((ref) => ref.watch(_userProvider)),
-        isAdminProvider.overrideWith((ref) async => isAdmin),
+        currentUserProvider.overrideWith((ref) => ref.watch(userProvider)),
       ],
     );
     addTearDown(container.dispose);
-    container.listen(adminPushProvider, (_, _) {});
+    container.listen(pushRegistrationProvider, (_, _) {});
     return container;
   }
 
-  Future<void> settle() => Future<void>.delayed(Duration.zero);
+  Future<void> settle() async {
+    for (var i = 0; i < 5; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
 
-  test('an admin registers this device with the API', () async {
+  /// "fid → token" for each registration sent to the API.
+  List<String> registrations() => [
+    for (final r in requests)
+      '${(jsonDecode(r.body) as Map)['fid']} → '
+          '${r.headers['Authorization'] ?? 'nobody'}',
+  ];
+
+  test('everyone is asked on open, and the device registered', () async {
     start();
     await settle();
-    await settle();
     expect(messaging.calls, ['permission', 'register', 'installationId']);
-    expect(requests.single.method, 'POST');
-    expect(requests.single.url.path, '/api/admin/devices');
+    expect(requests.single.url.path, '/api/devices');
     expect(jsonDecode(requests.single.body), {
       'fid': 'fid-1',
       'platform': 'android',
     });
+    expect(registrations(), ['fid-1 → nobody']);
+  });
+
+  test('a signed-in user\'s device is linked to them', () async {
+    start(signedIn: const AuthUser(id: 'u1'));
+    await settle();
+    expect(registrations(), ['fid-1 → Bearer token-u1']);
+  });
+
+  test('signing in and out relinks the device', () async {
+    final container = start();
+    await settle();
+    container.read(userProvider.notifier).signIn('u1');
+    await settle();
+    container.read(userProvider.notifier).signOut();
+    await settle();
+    expect(registrations(), [
+      'fid-1 → nobody',
+      'fid-1 → Bearer token-u1',
+      'fid-1 → nobody',
+    ]);
+    // The device keeps its registration (shop news); it's just nobody's now.
+    expect(messaging.calls, isNot(contains('unregister')));
   });
 
   test('a new FID from FCM is sent again', () async {
@@ -112,36 +165,13 @@ void main() {
     await settle();
     messaging.registered.add('fid-2');
     await settle();
-    expect(requests.map((r) => (jsonDecode(r.body) as Map)['fid']), [
-      'fid-1',
-      'fid-2',
-    ]);
-  });
-
-  test('signing out unregisters the device', () async {
-    final container = start();
-    await settle();
-    container.read(_userProvider.notifier).signOut();
-    await settle();
-    expect(messaging.calls.last, 'unregister');
-
-    // No longer listening: later FIDs aren't sent for the old user.
-    messaging.registered.add('fid-3');
-    await settle();
-    expect(requests, hasLength(1));
+    expect(registrations(), ['fid-1 → nobody', 'fid-2 → nobody']);
   });
 
   test('nothing is registered without permission', () async {
     start(permission: false);
     await settle();
     expect(messaging.calls, ['permission']);
-    expect(requests, isEmpty);
-  });
-
-  test('customers are never registered', () async {
-    start(isAdmin: false);
-    await settle();
-    expect(messaging.calls, isEmpty);
     expect(requests, isEmpty);
   });
 

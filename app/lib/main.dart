@@ -69,7 +69,7 @@ class DonaGalletaApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(adminPushProvider);
+    ref.watch(pushRegistrationProvider);
     return MaterialApp.router(
       title: 'Doña Galleta',
       scaffoldMessengerKey: scaffoldMessengerKey,

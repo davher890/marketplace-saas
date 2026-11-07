@@ -4,8 +4,9 @@ import { z } from 'zod';
 import type { AuthUser } from '../auth';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
 
-// Push notifications to the admins' Android devices through Firebase Cloud
-// Messaging (HTTP v1 API). Needs FIREBASE_SERVICE_ACCOUNT (the service account
+// Push notifications to Android devices through Firebase Cloud Messaging
+// (HTTP v1 API). Every app install registers, signed in or not; new-order
+// notices only go to admins' devices. Needs FIREBASE_SERVICE_ACCOUNT (the service account
 // key JSON from Firebase → Project settings → Service accounts). Without it,
 // nothing is sent and orders work as usual.
 
@@ -20,17 +21,19 @@ export const registerDeviceSchema = z.object({
 });
 
 /**
- * Saves the admin's device. An FID identifies one app install, so if it was
- * registered by someone else (shared device) it moves to this user.
+ * Saves the device, linked to whoever is signed in on it, or to nobody. An
+ * FID identifies one app install, so registering it again moves it: to the
+ * new user on a shared phone, or back to nobody after signing out (so it
+ * stops getting a former admin's notices).
  */
 export async function registerDevice(
-  user: AuthUser,
+  user: AuthUser | null,
   input: z.infer<typeof registerDeviceSchema>,
 ): Promise<{ registered: true }> {
   const { error } = await supabaseAdmin()
     .from('push_devices')
     .upsert(
-      { fid: input.fid, user_id: user.id, platform: input.platform, updated_at: now() },
+      { fid: input.fid, user_id: user?.id ?? null, platform: input.platform, updated_at: now() },
       { onConflict: 'fid' },
     );
   check(error);

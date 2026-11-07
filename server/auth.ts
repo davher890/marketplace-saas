@@ -41,6 +41,15 @@ export async function requireUser(request: Request): Promise<AuthUser> {
 }
 
 /**
+ * The caller if the request carries an access token, null if it carries none.
+ * A token that is present but invalid is still rejected (401), so the app
+ * renews its session instead of silently acting anonymously.
+ */
+export async function optionalUser(request: Request): Promise<AuthUser | null> {
+  return bearerToken(request) ? requireUser(request) : null;
+}
+
+/**
  * Reads the role from `profiles`. Uses the service-role client so the check
  * doesn't depend on how the profiles policies are written.
  */

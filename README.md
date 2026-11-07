@@ -171,7 +171,8 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Sign in, sign up, sessions: Supabase Auth called only from the API, with a new client per call. Errors keep Supabase's code (`invalid_credentials`...) for the app to show in Spanish. Password recovery answers the same for any email | `sessions.ts` |
 | Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
-| New order: a push notification to every admin's Android device. A failed notification never fails the checkout; devices FCM no longer knows are removed | `push.ts` |
+| New order: a push notification to every admin's Android device, and an email to the admins (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
+| Status change: the customer gets an email for paid, in preparation, shipped, delivered and cancelled (not for going back to pending) | `orders.ts`, `orderEmails.ts` |
 | Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
 | Password change: needs the current password, except within an hour of opening a recovery link. Supabase then ends every session of the user, so the API returns a new one for this device. Deleting the account also asks for the password | `sessions.ts`, `profiles.ts` |
 
@@ -188,7 +189,9 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…03_rls_policies.sql`: Row Level Security for every table.
    - `…04_product_categories.sql`: lets a product be in several categories, and
      links existing products to their current category.
-   - `…05_push_devices.sql`: the admins' devices for push notifications.
+   - `…05_push_devices.sql`: the devices that get push notifications.
+   - `…06_push_devices_anyone.sql`: devices without an account (anyone who opens
+     the Android app).
 
    All but the first are safe to run more than once.
 3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
@@ -220,6 +223,11 @@ ALLOWED_ORIGINS=http://localhost:8000
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 API_BASE_URL=
 FIREBASE_SERVICE_ACCOUNT=
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=donagalletashop@gmail.com
+SMTP_PASSWORD=
+SITE_URL=https://www.xn--doagalleta-u9a.es
 ```
 
 | Variable | Where to find it | Used by |
@@ -229,7 +237,10 @@ FIREBASE_SERVICE_ACCOUNT=
 | `ALLOWED_ORIGINS` | Comma-separated origins allowed to call `/api` from another origin. Only for local development | API |
 | `SUPABASE_PUBLISHABLE_KEY` | Project Settings → API Keys → Publishable key (`sb_publishable_…`) | API and web build |
 | `API_BASE_URL` | Leave empty: the deployed web app calls the API on its own origin | Web build |
-| `FIREBASE_SERVICE_ACCOUNT` | Optional. Service account key JSON on one line, see [Push notifications](#6-push-notifications-to-admins). Secret | API |
+| `FIREBASE_SERVICE_ACCOUNT` | Optional. Service account key JSON on one line, see [Push notifications](#6-push-notifications). Secret | API |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Optional. The mail server for order emails, see [Emails](#8-emails). `SMTP_PASSWORD` is secret | API |
+| `EMAIL_FROM` | Optional sender, e.g. `"Doña Galleta" <donagalletashop@gmail.com>`. Defaults to "Doña Galleta" and `SMTP_USER` | API |
+| `SITE_URL` | Optional. The shop's address, for the links in emails | API |
 
 ```bash
 npm install
@@ -327,10 +338,11 @@ value until the next upload.
 New personal developer accounts must run a closed test with at least 12 testers for 14
 days before publishing to production. Organisation accounts don't need to.
 
-### 6. Push notifications to admins
+### 6. Push notifications
 
-When an order is placed, every admin gets a notification on Android. Tapping it
-opens the order. The API sends them with Firebase Cloud Messaging; until Firebase
+The Android app asks everyone for the notification permission when it opens, so the
+shop can reach any install (e.g. with news in the future). When an order is placed,
+every admin gets a notification; tapping it opens the order. The API sends them with Firebase Cloud Messaging; until Firebase
 is set up, everything else works without them.
 
 1. In the [Firebase console](https://console.firebase.google.com), create a project.
@@ -341,17 +353,20 @@ is set up, everything else works without them.
 3. **Server key**: Project settings → Service accounts → *Generate new private key*.
    Paste the whole JSON file, on one line, as `FIREBASE_SERVICE_ACCOUNT` in Vercel
    (Production) and in your local `.env`. It is secret: never commit it.
-4. Run migration `…05_push_devices.sql` in Supabase.
-5. Rebuild the app. An admin who signs in is asked for permission to show
-   notifications, and the device is registered in `push_devices`.
+4. Run migrations `…05_push_devices.sql` and `…06_push_devices_anyone.sql` in Supabase.
+5. Rebuild the app. It asks for the permission when it opens, and the device is
+   registered in `push_devices`.
 
 How it works:
 
 - The app registers its Firebase Installation ID (FID), FCM's replacement for
-  registration tokens. It does this only for admins, with
-  `POST /api/admin/devices`.
-- Signing out unregisters the device from FCM, so the next person using the phone
-  gets nothing. The API deletes devices that FCM rejects.
+  registration tokens, with `POST /api/devices`. The device is linked to whoever is
+  signed in, or to nobody.
+- Signing in or out registers it again, so after signing out a device no longer gets
+  an admin's notices. The API deletes devices that FCM rejects.
+- Before sending shop news, remember that Spanish law (LSSI) asks for consent to
+  commercial messages. Allowing notifications covers it as long as the privacy policy
+  says so, which it does.
 - Android shows the notifications in the *Pedidos* channel (`MainActivity.kt`). If
   the app is open, a message appears at the bottom instead, with a *Ver* button.
 
@@ -387,6 +402,39 @@ How it works:
   [`lib/core/analytics/cookie_consent.dart`](app/lib/core/analytics/cookie_consent.dart).
 - The visitor's choice is stored in `localStorage` (`analytics_consent`). Rejecting
   after accepting deletes the `_ga` cookies.
+
+### 8. Emails
+
+The API emails the admins when an order is placed (besides the push notification).
+It emails the customer when they place it and whenever its status changes: paid, in
+preparation, shipped, delivered, cancelled. It sends plain SMTP through the shop's
+Gmail account. Without `SMTP_HOST`, nothing is sent and everything else works.
+
+1. The Gmail account needs **2-Step Verification**. Then, in
+   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
+   create an **app password**. Supabase Auth's custom SMTP can use the same one.
+2. In Vercel (Production) and your local `.env`, set:
+   - `SMTP_HOST=smtp.gmail.com`
+   - `SMTP_PORT=465`
+   - `SMTP_USER=` the Gmail address
+   - `SMTP_PASSWORD=` the app password
+   - `SITE_URL=https://www.xn--doagalleta-u9a.es`
+3. Redeploy.
+
+How it works:
+
+- [`server/services/email.ts`](server/services/email.ts) is the only file that knows
+  how emails are sent. Moving to Brevo, IONOS or Resend means changing the `SMTP_*`
+  variables, or that file.
+- [`server/services/orderEmails.ts`](server/services/orderEmails.ts) has the texts.
+  Everything the customer typed is escaped. Admins' emails come from Supabase Auth
+  (users with the admin role); if there are none, the shop's contact email is used.
+- The customer's replies go to the shop's contact email, and the admins' replies go
+  to the customer.
+- Gmail allows about 500 recipients a day, plenty for the shop.
+- Without custom SMTP, **Supabase's own emails** (confirm account, recover password)
+  only reach the project's team members, at 2 per hour. With Gmail as custom SMTP in
+  Authentication → Emails → SMTP Settings, they reach everyone.
 
 ## Administrators
 
@@ -453,7 +501,8 @@ needs the admin role.
 | POST | `/api/orders/:id/cancel` | Cancel a pending order. |
 | GET | `/api/admin/orders?status=` | All orders. |
 | PATCH | `/api/admin/orders/:id` | `{status?, admin_notes?}`. |
-| POST | `/api/admin/devices` | Register this device for new-order notifications: `{fid, platform: "android"}`. |
+| POST | `/api/devices` | Register an app install for push notifications: `{fid, platform: "android"}`. With a session it is linked to that user, without one to nobody. |
+| POST | `/api/admin/devices` | The same, for older app builds (admins only). |
 | GET / POST | `/api/admin/categories` | All categories (including inactive, with `product_count`) / create `{name, slug, parent_id, description, is_active}`. |
 | PUT / PATCH / DELETE | `/api/admin/categories/:id` | Replace / toggle `{is_active}` / delete (only if it has no products or sub-categories). |
 | POST | `/api/admin/categories/:id/move` | `{direction: "up" \| "down"}` among its siblings. |
