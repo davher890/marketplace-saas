@@ -32,6 +32,7 @@ export const router = new Router()
     catalog.listProducts({
       category: query.get('category'),
       featured: query.get('featured') === 'true',
+      sort: catalog.parseSort(query.get('sort')),
     }),
   )
   .get('/api/products/:slug', async ({ params }) => catalog.getProductBySlug(params.slug))

@@ -18,6 +18,7 @@ import '../features/checkout/checkout_screen.dart';
 import '../features/orders/my_orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/shell/store_shell.dart';
+import '../repositories/catalog_repository.dart';
 import '../repositories/profile_repository.dart';
 import 'auth.dart';
 import 'theme.dart';
@@ -61,7 +62,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           _storeRoute('/', (_) => const HomeScreen()),
           _storeRoute(
             '/c/:slug',
-            (state) => CategoryScreen(slug: state.pathParameters['slug']!),
+            (state) => CategoryScreen(
+              slug: state.pathParameters['slug']!,
+              sort: ProductSort.fromUrl(state.uri.queryParameters['orden']),
+            ),
           ),
           _storeRoute(
             '/product/:slug',

@@ -169,6 +169,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Categories: two levels (menu + dropdowns), unique slug, a parent must be a main category, new ones go last, reordered by swapping with a sibling. Deleting is refused while a category has products or sub-categories (deactivate it to hide it) | `categories.ts` |
 | Images: uploaded straight to Storage with a signed upload from the API (JPG/PNG/WEBP/GIF only, into the product's folder), public URLs built from `storage_path` when reading, files deleted with the image or product | `images.ts` |
 | Sign in, sign up, sessions: Supabase Auth called only from the API, with a new client per call. Errors keep Supabase's code (`invalid_credentials`...) for the app to show in Spanish. Password recovery answers the same for any email | `sessions.ts` |
+| Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
 | New order: a push notification to every admin's Android device. A failed notification never fails the checkout; devices FCM no longer knows are removed | `push.ts` |
 | Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
@@ -440,7 +441,7 @@ needs the admin role.
 | POST | `/api/auth/recover` | `{email, redirect_to?}`: emails a link to choose a new password. Same answer for unknown emails. |
 | PUT | `/api/auth/password` | `{password, current_password?}` → new session. `current_password` is required unless the session comes from a recovery link. |
 | GET | `/api/categories` | Active categories, in menu order. No session needed. |
-| GET | `/api/products?featured=true`, `?category=<slug>` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). |
+| GET | `/api/products?featured=true`, `?category=<slug>`, `&sort=price\|price_desc\|name` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). Cheapest first by default (lowest active variant price, as shown on the cards); `name` is alphabetical in Spanish. |
 | GET | `/api/products/:slug` | One active product (404 if not found or inactive). |
 | GET | `/api/settings` | Shipping and contact settings. |
 | GET / PATCH / DELETE | `/api/me` | Current profile (created on first call) / update `{full_name, phone}` / delete the account with `{password}`. The email can't be changed. Deleting keeps the orders (without `user_id`) and is refused for admins. |
