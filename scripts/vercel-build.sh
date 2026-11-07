@@ -30,3 +30,12 @@ cd "$ROOT_DIR/app"
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
   --dart-define=API_BASE_URL="${API_BASE_URL:-}"
+
+# Google Tag Manager container (e.g. GTM-ABC1234), set in Vercel. Empty: no
+# Tag Manager and no cookie banner (see the script in app/web/index.html).
+GTM_ID="${GTM_ID:-}"
+if [ -n "$GTM_ID" ] && ! [[ "$GTM_ID" =~ ^GTM-[A-Z0-9]+$ ]]; then
+  echo "GTM_ID must look like GTM-ABC1234 (got '$GTM_ID')" >&2
+  exit 1
+fi
+sed -i.bak "s/__GTM_ID__/${GTM_ID}/" build/web/index.html && rm build/web/index.html.bak

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'core/analytics/cookie_consent.dart';
 import 'core/auth.dart';
 import 'core/env.dart';
 import 'core/push_notifications.dart';
@@ -75,11 +76,14 @@ class DonaGalletaApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: ref.watch(routerProvider),
+      // The cookie banner floats over every page until the visitor chooses.
+      builder: (context, child) =>
+          Stack(children: [child ?? const SizedBox(), const CookieBanner()]),
     );
   }
 }
 
-/// Shown when the app was built without SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY.
+/// Shown when the app was built without API_BASE_URL (outside the web).
 class _MissingConfigApp extends StatelessWidget {
   const _MissingConfigApp();
 

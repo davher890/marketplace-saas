@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/analytics/cookie_consent.dart';
 import '../../core/env.dart';
 import '../../core/auth.dart';
 import '../../repositories/profile_repository.dart';
@@ -321,17 +322,18 @@ class _Footer extends ConsumerWidget {
         children: [
           Text('Legal', style: heading),
           const SizedBox(height: 8),
-          InkWell(
+          _FooterLink(
+            'Política de privacidad',
             onTap: () => launchUrl(Env.sitePage('privacidad.html')),
-            child: const Text(
-              'Política de privacidad',
-              style: TextStyle(
-                color: AppColors.cream,
-                decoration: TextDecoration.underline,
-                decorationColor: AppColors.cream,
-              ),
-            ),
           ),
+          // Lets visitors change their analytics cookies choice at any time.
+          if (ref.read(cookieConsentProvider.notifier).available) ...[
+            const SizedBox(height: 4),
+            _FooterLink(
+              'Cookies',
+              onTap: ref.read(cookieConsentProvider.notifier).reopen,
+            ),
+          ],
         ],
       ),
     ];
@@ -349,6 +351,28 @@ class _Footer extends ConsumerWidget {
             alignment: WrapAlignment.spaceBetween,
             children: columns,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FooterLink extends StatelessWidget {
+  const _FooterLink(this.label, {required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppColors.cream,
+          decoration: TextDecoration.underline,
+          decorationColor: AppColors.cream,
         ),
       ),
     );

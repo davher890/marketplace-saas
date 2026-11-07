@@ -344,6 +344,39 @@ How it works:
 - Android shows the notifications in the *Pedidos* channel (`MainActivity.kt`). If
   the app is open, a message appears at the bottom instead, with a *Ver* button.
 
+### 7. Google Analytics and Tag Manager (web)
+
+The web app loads Google Tag Manager, and Google Analytics 4 is set up inside it.
+Tag Manager only loads after the visitor accepts analytics cookies in the app's
+banner (Spanish law requires asking first), and Google Consent Mode v2 starts with
+everything denied. Without `GTM_ID`, nothing is loaded and no banner is shown. The
+Android app has no analytics.
+
+1. **Google Analytics**: create a GA4 property with a *Web* data stream for
+   `https://www.xn--doagalleta-u9a.es`. Copy its measurement ID (`G-…`). In the
+   stream's *Enhanced measurement*, keep **Page changes based on browser history
+   events** on: the shop is a single-page app, and that's how page views are counted
+   when moving between pages.
+2. **Tag Manager**: create a *Web* container and copy its ID (`GTM-…`).
+   - Add a **Google tag** with the `G-…` ID, triggered on *Initialization – All
+     Pages*.
+   - Don't add another page-view tag: the Google tag and enhanced measurement already
+     count page views.
+   - Click **Submit** to publish the container.
+3. **Vercel**: add `GTM_ID=GTM-…` (Production) and redeploy. `scripts/vercel-build.sh`
+   writes it into `index.html` and refuses IDs that don't look like `GTM-…`.
+4. **Check it**: open the shop, accept cookies, and look at GA4 → Reports → Realtime,
+   or use Tag Manager's *Preview* mode.
+
+How it works:
+
+- The loader and consent handling live in a script in
+  [`app/web/index.html`](app/web/index.html), exposed as `window.dgAnalytics`.
+- The banner and the footer's *Cookies* link are in
+  [`lib/core/analytics/cookie_consent.dart`](app/lib/core/analytics/cookie_consent.dart).
+- The visitor's choice is stored in `localStorage` (`analytics_consent`). Rejecting
+  after accepting deletes the `_ga` cookies.
+
 ## Administrators
 
 The role lives in `public.profiles.role` (`customer` or `admin`) and nobody can change

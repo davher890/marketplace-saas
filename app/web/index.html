@@ -32,6 +32,81 @@
 
   <title>Doña Galleta</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Google Tag Manager (with Google Analytics 4 configured inside it), loaded
+    only after the visitor accepts analytics cookies (the app's cookie banner
+    calls dgAnalytics.setConsent). Google Consent Mode v2: everything denied
+    by default, analytics granted on consent; ads storage stays denied.
+    __GTM_ID__ is replaced by scripts/vercel-build.sh with the GTM_ID
+    environment variable; without it nothing is loaded.
+  -->
+  <script>
+    (function () {
+      var GTM_ID = '__GTM_ID__';
+      var STORAGE_KEY = 'analytics_consent';
+      var enabled = /^GTM-[A-Z0-9]+$/.test(GTM_ID);
+      var loaded = false;
+
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { window.dataLayer.push(arguments); }
+      gtag('consent', 'default', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'denied'
+      });
+
+      function load() {
+        if (!enabled || loaded) return;
+        loaded = true;
+        window.dataLayer.push({ 'gtm.start': Date.now(), event: 'gtm.js' });
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtm.js?id=' + GTM_ID;
+        document.head.appendChild(script);
+      }
+
+      function stored() {
+        try { return window.localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+      }
+
+      // Removes Google Analytics cookies (_ga, _ga_<id>) when consent is withdrawn.
+      function removeAnalyticsCookies() {
+        var parts = window.location.hostname.split('.');
+        document.cookie.split(';').forEach(function (cookie) {
+          var name = cookie.split('=')[0].trim();
+          if (name.indexOf('_ga') !== 0) return;
+          for (var i = 0; i < parts.length - 1; i++) {
+            var domain = parts.slice(i).join('.');
+            document.cookie = name + '=; Max-Age=0; path=/; domain=.' + domain;
+          }
+          document.cookie = name + '=; Max-Age=0; path=/';
+        });
+      }
+
+      window.dgAnalytics = {
+        /** Whether Tag Manager is configured for this site. */
+        enabled: enabled,
+        /** 'granted', 'denied', or null if the visitor hasn't chosen yet. */
+        consent: function () { return stored(); },
+        setConsent: function (granted) {
+          try { window.localStorage.setItem(STORAGE_KEY, granted ? 'granted' : 'denied'); } catch (e) {}
+          gtag('consent', 'update', { analytics_storage: granted ? 'granted' : 'denied' });
+          if (granted) {
+            load();
+          } else {
+            removeAnalyticsCookies();
+          }
+        }
+      };
+
+      if (stored() === 'granted') {
+        gtag('consent', 'update', { analytics_storage: 'granted' });
+        load();
+      }
+    })();
+  </script>
 </head>
 <body>
   <!--
