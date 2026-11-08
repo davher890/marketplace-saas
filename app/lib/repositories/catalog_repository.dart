@@ -43,8 +43,8 @@ class CatalogRepository {
   /// Featured products, or the products of a category (and its
   /// sub-categories) by slug, in [sort] order. An unknown category has no
   /// products.
-  /// [search] keeps the products whose name has every word of it (accents
-  /// and case don't matter).
+  /// [search] keeps the products whose name or description has every word of
+  /// it (accents and case don't matter); name matches come first.
   Future<List<Product>> fetchProducts({
     String? categorySlug,
     bool featuredOnly = false,
@@ -112,7 +112,8 @@ final categoryProductsProvider =
           .fetchProducts(categorySlug: key.slug, sort: key.sort);
     });
 
-/// Products whose name matches the search text (empty text: none).
+/// Products whose name or description matches the search text (empty text:
+/// none).
 final searchProductsProvider = FutureProvider.family<List<Product>, String>((
   ref,
   query,

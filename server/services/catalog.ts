@@ -96,20 +96,29 @@ export function searchable(text: string): string {
   return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-/** Every word of the query appears in the name, in any order. */
-export function matchesSearch(name: string, query: string): boolean {
-  const haystack = searchable(name);
-  return searchable(query)
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((word) => haystack.includes(word));
+/**
+ * How well a product matches the search: 2 when every word of the query is
+ * in its name, 1 when every word is in its name or description (between
+ * them), 0 when it doesn't match. Words can come in any order.
+ */
+export function searchScore(product: { name: string; description?: unknown }, query: string): 0 | 1 | 2 {
+  const words = searchable(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 0;
+  const name = searchable(product.name);
+  if (words.every((word) => name.includes(word))) return 2;
+  const description = typeof product.description === 'string' ? searchable(product.description) : '';
+  const text = `${name} ${description}`;
+  return words.every((word) => text.includes(word)) ? 1 : 0;
 }
 
 export interface ProductFilter {
   /** Category slug; includes its sub-categories. */
   category?: string | null;
   featured?: boolean;
-  /** Text to find in the product name (accents and case ignored). */
+  /**
+   * Text to find in the product name or description (accents and case
+   * ignored). Products matching by name come first.
+   */
   search?: string | null;
   /** Cheapest first by default. */
   sort?: ProductSort;
@@ -134,10 +143,13 @@ export async function listProducts(filter: ProductFilter): Promise<ProductRow[]>
   if (filter.featured) query = query.eq('is_featured', true);
   // Filtered and sorted here: PostgREST can't ignore accents or order by the
   // variants' price. The catalog is small enough to do it in memory.
-  let rows = unwrap(await query) as ProductRow[];
+  const rows = unwrap(await query) as ProductRow[];
+  const sorted = sortProducts(rows.map(shapeProduct), filter.sort ?? 'price');
   const search = filter.search?.trim();
-  if (search) rows = rows.filter((row) => matchesSearch(row.name, search));
-  return sortProducts(rows.map(shapeProduct), filter.sort ?? 'price');
+  if (!search) return sorted;
+  // Name matches first, then description matches, each in the chosen order.
+  const scored = sorted.map((product) => ({ product, score: searchScore(product, search) }));
+  return [2, 1].flatMap((score) => scored.filter((s) => s.score === score).map((s) => s.product));
 }
 
 export async function getProductBySlug(slug: string): Promise<ProductRow> {
