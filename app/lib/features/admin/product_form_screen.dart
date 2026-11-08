@@ -449,7 +449,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                     ],
                   ),
                 ),
-              if (_choiceFields.length < 5)
+              if (_choiceFields.length < 10)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
