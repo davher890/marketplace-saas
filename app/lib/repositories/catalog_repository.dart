@@ -43,9 +43,12 @@ class CatalogRepository {
   /// Featured products, or the products of a category (and its
   /// sub-categories) by slug, in [sort] order. An unknown category has no
   /// products.
+  /// [search] keeps the products whose name has every word of it (accents
+  /// and case don't matter).
   Future<List<Product>> fetchProducts({
     String? categorySlug,
     bool featuredOnly = false,
+    String? search,
     ProductSort sort = ProductSort.standard,
   }) async {
     try {
@@ -54,6 +57,7 @@ class CatalogRepository {
         query: {
           'category': ?categorySlug,
           if (featuredOnly) 'featured': 'true',
+          if (search != null && search.trim().isNotEmpty) 'q': search.trim(),
           'sort': sort.apiValue,
         },
       );
@@ -107,6 +111,15 @@ final categoryProductsProvider =
           .watch(catalogRepositoryProvider)
           .fetchProducts(categorySlug: key.slug, sort: key.sort);
     });
+
+/// Products whose name matches the search text (empty text: none).
+final searchProductsProvider = FutureProvider.family<List<Product>, String>((
+  ref,
+  query,
+) async {
+  if (query.trim().length < 2) return const [];
+  return ref.watch(catalogRepositoryProvider).fetchProducts(search: query);
+});
 
 final productBySlugProvider = FutureProvider.family<Product?, String>((
   ref,

@@ -1,3 +1,19 @@
+/// A list the customer picks one value from (e.g. "Color del lazo": Rojo,
+/// Azul). Unlike variants it has no price or stock of its own.
+class ChoiceField {
+  const ChoiceField({required this.label, required this.options});
+
+  final String label;
+  final List<String> options;
+
+  factory ChoiceField.fromJson(Map<String, dynamic> json) => ChoiceField(
+    label: json['label'] as String,
+    options: (json['options'] as List? ?? []).cast<String>(),
+  );
+
+  Map<String, dynamic> toJson() => {'label': label, 'options': options};
+}
+
 class Product {
   const Product({
     required this.id,
@@ -9,6 +25,7 @@ class Product {
     this.description,
     this.isCustomizable = false,
     this.customizationLabel,
+    this.choiceFields = const [],
     this.isActive = true,
     this.isFeatured = false,
     this.variants = const [],
@@ -28,6 +45,9 @@ class Product {
   final int basePriceCents;
   final bool isCustomizable;
   final String? customizationLabel;
+
+  /// Lists the customer picks one value from before adding to the cart.
+  final List<ChoiceField> choiceFields;
   final bool isActive;
   final bool isFeatured;
   final List<ProductVariant> variants;
@@ -80,6 +100,9 @@ class Product {
       basePriceCents: json['base_price_cents'] as int,
       isCustomizable: json['is_customizable'] as bool? ?? false,
       customizationLabel: json['customization_label'] as String?,
+      choiceFields: (json['choice_fields'] as List? ?? [])
+          .map((e) => ChoiceField.fromJson(e as Map<String, dynamic>))
+          .toList(),
       isActive: json['is_active'] as bool? ?? true,
       isFeatured: json['is_featured'] as bool? ?? false,
       variants: variants,
@@ -97,6 +120,7 @@ class Product {
     'base_price_cents': basePriceCents,
     'is_customizable': isCustomizable,
     'customization_label': customizationLabel,
+    'choice_fields': [for (final field in choiceFields) field.toJson()],
     'is_active': isActive,
     'is_featured': isFeatured,
   };

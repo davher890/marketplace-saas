@@ -54,6 +54,9 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
   bool _adding = false;
   final _customization = TextEditingController();
 
+  /// Value picked in each choice list, by list name.
+  final _choices = <String, String>{};
+
   Product get product => widget.product;
 
   @override
@@ -85,6 +88,14 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
       return;
     }
 
+    final missing = product.choiceFields
+        .where((field) => !_choices.containsKey(field.label))
+        .firstOrNull;
+    if (missing != null) {
+      showMessage(context, 'Elige: ${missing.label}');
+      return;
+    }
+
     if (product.isCustomizable && _customization.text.trim().isEmpty) {
       showMessage(
         context,
@@ -101,6 +112,7 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
             variant.id,
             quantity: _quantity,
             customization: _customization.text.trim(),
+            choices: Map.of(_choices),
           );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -182,6 +194,23 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
           ),
           const SizedBox(height: 24),
         ],
+        for (final field in product.choiceFields) ...[
+          DropdownMenu<String>(
+            expandedInsets: EdgeInsets.zero,
+            label: Text(field.label),
+            hintText: 'Elige una opción',
+            requestFocusOnTap: false,
+            initialSelection: _choices[field.label],
+            onSelected: (value) => setState(() {
+              if (value != null) _choices[field.label] = value;
+            }),
+            dropdownMenuEntries: [
+              for (final option in field.options)
+                DropdownMenuEntry(value: option, label: option),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
         if (product.isCustomizable) ...[
           TextField(
             controller: _customization,
@@ -214,10 +243,9 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
             ),
           ],
         ),
-        if (variant?.tracksStock ?? false) ...[
-          const SizedBox(height: 8),
-          Text('Quedan ${variant!.stock} unidades', style: textTheme.bodySmall),
-        ] else ...[
+        // The stock left is not shown to customers, only whether it's sold
+        // out (the button) or made to order.
+        if (!(variant?.tracksStock ?? false)) ...[
           const SizedBox(height: 8),
           Text('Hecho por encargo', style: textTheme.bodySmall),
         ],

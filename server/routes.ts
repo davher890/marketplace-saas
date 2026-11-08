@@ -33,6 +33,7 @@ export const router = new Router()
     catalog.listProducts({
       category: query.get('category'),
       featured: query.get('featured') === 'true',
+      search: query.get('q')?.slice(0, 100),
       sort: catalog.parseSort(query.get('sort')),
     }),
   )

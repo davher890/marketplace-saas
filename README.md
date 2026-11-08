@@ -150,6 +150,13 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
   product price. `stock = NULL` means *made to order* (stock not tracked).
 - **Customizable products** accept a custom text (e.g. a baby's name), stored on the
   cart line and copied to the order line.
+- **Choice lists** (`products.choice_fields`, e.g. `[{"label": "Color del lazo",
+  "options": ["Rojo", "Azul"]}]`): the customer picks one value from each list. They
+  don't change the price or the stock (use variants for that). The picked values go
+  in the same `customization` text, before the custom text, e.g.
+  "Color del lazo: Azul · Lucía".
+- **Stock** is never shown to customers as a number: the product page only says
+  "Agotado" or, when stock isn't tracked, "Hecho por encargo".
 - **Orders** copy product name, variant, SKU and price, so later catalog edits don't
   change past orders. Every status change is logged in `order_status_history`.
 - **Slugs** are stored lower-case and **SKUs** upper-case by the API, so uniqueness
@@ -169,6 +176,8 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Categories: two levels (menu + dropdowns), unique slug, a parent must be a main category, new ones go last, reordered by swapping with a sibling. Deleting is refused while a category has products or sub-categories (deactivate it to hide it) | `categories.ts` |
 | Images: uploaded straight to Storage with a signed upload from the API (JPG/PNG/WEBP/GIF only, into the product's folder), public URLs built from `storage_path` when reading, files deleted with the image or product | `images.ts` |
 | Sign in, sign up, sessions: Supabase Auth called only from the API, with a new client per call. Errors keep Supabase's code (`invalid_credentials`...) for the app to show in Spanish. Password recovery answers the same for any email | `sessions.ts` |
+| Search: `?q=` keeps the products whose name has every word of the text, ignoring accents and case ("balsamo" finds "Bálsamo"). The app's `/buscar` page keeps the text in the URL | `catalog.ts` |
+| Choice lists: every list needs a value, and it must be one of its options. The values are stored on the cart line with the custom text | `cart.ts` |
 | Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
 | New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
@@ -192,6 +201,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…05_push_devices.sql`: the devices that get push notifications.
    - `…06_push_devices_anyone.sql`: devices without an account (anyone who opens
      the Android app).
+   - `…07_product_choice_fields.sql`: choice lists on products.
 
    All but the first are safe to run more than once.
 3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
@@ -491,12 +501,12 @@ needs the admin role.
 | POST | `/api/auth/recover` | `{email, redirect_to?}`: emails a link to choose a new password. Same answer for unknown emails. |
 | PUT | `/api/auth/password` | `{password, current_password?}` → new session. `current_password` is required unless the session comes from a recovery link. |
 | GET | `/api/categories` | Active categories, in menu order. No session needed. |
-| GET | `/api/products?featured=true`, `?category=<slug>`, `&sort=price\|price_desc\|name` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). Cheapest first by default (lowest active variant price, as shown on the cards); `name` is alphabetical in Spanish. |
+| GET | `/api/products?featured=true`, `?category=<slug>`, `?q=<text>`, `&sort=price\|price_desc\|name` | Active products with variants and images; a category includes its sub-categories (404 if it doesn't exist). Cheapest first by default (lowest active variant price, as shown on the cards); `name` is alphabetical in Spanish. |
 | GET | `/api/products/:slug` | One active product (404 if not found or inactive). |
 | GET | `/api/settings` | Shipping and contact settings. |
 | GET / PATCH / DELETE | `/api/me` | Current profile (created on first call) / update `{full_name, phone}` / delete the account with `{password}`. The email can't be changed. Deleting keeps the orders (without `user_id`) and is refused for admins. |
 | GET | `/api/cart` | Cart with nested products and totals. |
-| POST | `/api/cart/items` | Add `{variant_id, quantity, customization}`. |
+| POST | `/api/cart/items` | Add `{variant_id, quantity, customization, choices}`. `choices` is the value picked in each choice list, by list name. |
 | PATCH / DELETE | `/api/cart/items/:id` | Set `{quantity}` (0 removes) / remove. |
 | POST | `/api/checkout` | Place an order from the cart. |
 | GET | `/api/orders`, `/api/orders/:id` | Own orders (admins can open any order). |
