@@ -44,7 +44,16 @@ class StoreShell extends ConsumerWidget {
             ),
           ),
         ),
-        actions: const [_CartButton(), _AccountButton(), SizedBox(width: 8)],
+        actions: [
+          IconButton(
+            tooltip: 'Buscar',
+            icon: const Icon(Icons.search),
+            onPressed: () => context.go('/buscar'),
+          ),
+          const _CartButton(),
+          const _AccountButton(),
+          const SizedBox(width: 8),
+        ],
         bottom: isWide && tree.isNotEmpty
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(60),

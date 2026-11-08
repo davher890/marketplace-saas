@@ -77,6 +77,14 @@ const variantSchema = z.object({
   is_active: z.boolean().default(true),
 });
 
+/** A list the customer picks one value from, e.g. "Color del lazo": Rojo, Azul. */
+const choiceFieldSchema = z
+  .object({
+    label: z.string().trim().min(1, 'Each list needs a name').max(60),
+    options: z.array(z.string().trim().min(1).max(60)).min(1, 'Each list needs at least one value').max(30),
+  })
+  .transform((field) => ({ label: field.label, options: [...new Set(field.options)] }));
+
 export const productSchema = z.object({
   /** Main category. Ignored when `category_ids` is sent (its first item wins). */
   category_id: z.uuid().nullable().default(null),
@@ -92,6 +100,14 @@ export const productSchema = z.object({
   base_price_cents: cents,
   is_customizable: z.boolean().default(false),
   customization_label: optionalText(80),
+  /** Lists the customer picks one value from (no price or stock of their own). */
+  choice_fields: z
+    .array(choiceFieldSchema)
+    .max(5)
+    .default([])
+    .refine((fields) => new Set(fields.map((f) => f.label.toLowerCase())).size === fields.length, {
+      message: 'Two choice lists have the same name',
+    }),
   is_active: z.boolean().default(true),
   is_featured: z.boolean().default(false),
   variants: z.array(variantSchema).min(1, 'A product needs at least one variant').max(100),

@@ -124,11 +124,21 @@ async function getOrCreateCartId(user: AuthUser): Promise<string> {
   throw error;
 }
 
+export interface ChoiceField {
+  label: string;
+  options: string[];
+}
+
 interface PurchasableVariant {
   id: string;
   is_active: boolean;
   stock: number | null;
-  products: { name: string; is_customizable: boolean; is_active: boolean } | null;
+  products: {
+    name: string;
+    is_customizable: boolean;
+    is_active: boolean;
+    choice_fields: ChoiceField[] | null;
+  } | null;
 }
 
 type AvailableVariant = PurchasableVariant & { products: NonNullable<PurchasableVariant['products']> };
@@ -138,7 +148,7 @@ async function findVariant(user: AuthUser, variantId: string): Promise<Available
   const variant = unwrap(
     await user.db
       .from('product_variants')
-      .select('id, is_active, stock, products(name, is_customizable, is_active)')
+      .select('id, is_active, stock, products(name, is_customizable, is_active, choice_fields)')
       .eq('id', variantId)
       .maybeSingle(),
   ) as PurchasableVariant | null;
@@ -160,17 +170,38 @@ export const addItemSchema = z.object({
   variant_id: z.uuid(),
   quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY).default(1),
   customization: z.string().trim().max(60).default(''),
+  /** The value picked in each of the product's choice lists, by list name. */
+  choices: z.record(z.string().max(60), z.string().trim().max(60)).default({}),
 });
+
+/**
+ * What is stored on the cart line (and copied to the order): the picked
+ * value of each choice list, then the free text, e.g.
+ * "Color del lazo: Azul · Lucía". Every list needs a value from its options,
+ * and the text is required only for customizable products.
+ */
+export function lineCustomization(
+  product: { is_customizable: boolean; choice_fields: ChoiceField[] | null },
+  input: { customization: string; choices: Record<string, string> },
+): string {
+  const picks = (product.choice_fields ?? []).map((field) => {
+    const value = input.choices[field.label];
+    if (!value) throw badRequest(`Choose a value for "${field.label}"`);
+    if (!field.options.includes(value)) throw badRequest(`"${value}" is not an option of "${field.label}"`);
+    return `${field.label}: ${value}`;
+  });
+
+  const text = product.is_customizable ? input.customization : '';
+  if (product.is_customizable && !text) throw badRequest('This product needs a customization text');
+  return [...picks, text].filter(Boolean).join(' · ');
+}
 
 /** Adds a variant to the cart, or increases its quantity if already there. */
 export async function addItem(user: AuthUser, input: z.infer<typeof addItemSchema>): Promise<Cart> {
   const variant = await findVariant(user, input.variant_id);
 
-  // Only customizable products keep the custom text.
-  const customization = variant.products.is_customizable ? input.customization : '';
-  if (variant.products.is_customizable && !customization) {
-    throw badRequest('This product needs a customization text');
-  }
+  // Only customizable products keep the custom text; choice lists go first.
+  const customization = lineCustomization(variant.products, input);
 
   const cartId = await getOrCreateCartId(user);
   const existing = unwrap(

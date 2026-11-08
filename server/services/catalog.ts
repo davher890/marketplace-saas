@@ -91,10 +91,26 @@ export function sortProducts<T extends ProductRow>(products: T[], sort: ProductS
   return [...products].sort(compare[sort]);
 }
 
+/** Lower case without accents, so "balsamo" finds "Bálsamo" (ñ becomes n too). */
+export function searchable(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/** Every word of the query appears in the name, in any order. */
+export function matchesSearch(name: string, query: string): boolean {
+  const haystack = searchable(name);
+  return searchable(query)
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => haystack.includes(word));
+}
+
 export interface ProductFilter {
   /** Category slug; includes its sub-categories. */
   category?: string | null;
   featured?: boolean;
+  /** Text to find in the product name (accents and case ignored). */
+  search?: string | null;
   /** Cheapest first by default. */
   sort?: ProductSort;
 }
@@ -116,8 +132,11 @@ export async function listProducts(filter: ProductFilter): Promise<ProductRow[]>
     query = query.in('id', ids);
   }
   if (filter.featured) query = query.eq('is_featured', true);
-  // Sorted here: the price depends on the variants, which PostgREST can't order by.
-  const rows = unwrap(await query) as ProductRow[];
+  // Filtered and sorted here: PostgREST can't ignore accents or order by the
+  // variants' price. The catalog is small enough to do it in memory.
+  let rows = unwrap(await query) as ProductRow[];
+  const search = filter.search?.trim();
+  if (search) rows = rows.filter((row) => matchesSearch(row.name, search));
   return sortProducts(rows.map(shapeProduct), filter.sort ?? 'price');
 }
 

@@ -13,15 +13,19 @@ class CartRepository {
 
   Future<Cart> fetchCart() async => _parse(await _api.get('/api/cart'));
 
+  /// [choices]: the value picked in each of the product's choice lists, by
+  /// list name. The API checks them and stores them with the customization.
   Future<Cart> add(
     String variantId, {
     int quantity = 1,
     String customization = '',
+    Map<String, String> choices = const {},
   }) async => _parse(
     await _api.post('/api/cart/items', {
       'variant_id': variantId,
       'quantity': quantity,
       'customization': customization,
+      if (choices.isNotEmpty) 'choices': choices,
     }),
   );
 
@@ -57,12 +61,14 @@ class CartNotifier extends AsyncNotifier<Cart> {
     String variantId, {
     int quantity = 1,
     String customization = '',
+    Map<String, String> choices = const {},
   }) async {
     state = AsyncData(
       await _repo.add(
         variantId,
         quantity: quantity,
         customization: customization,
+        choices: choices,
       ),
     );
   }

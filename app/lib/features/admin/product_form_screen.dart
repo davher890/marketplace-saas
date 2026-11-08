@@ -93,6 +93,12 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
             .map((v) => _VariantFields(VariantDraft.fromVariant(v)))
             .toList()
       : [_VariantFields(VariantDraft())];
+
+  /// Lists the customer picks one value from (no price or stock).
+  late final List<_ChoiceFieldControllers> _choiceFields = [
+    for (final field in _p?.choiceFields ?? const <ChoiceField>[])
+      _ChoiceFieldControllers(field),
+  ];
   bool _slugEdited = false;
   bool _saving = false;
 
@@ -122,6 +128,9 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     for (final v in _variants) {
       v.dispose();
     }
+    for (final field in _choiceFields) {
+      field.dispose();
+    }
     super.dispose();
   }
 
@@ -148,6 +157,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
           _isCustomizable && _customizationLabel.text.trim().isNotEmpty
           ? _customizationLabel.text.trim()
           : null,
+      choiceFields: [for (final field in _choiceFields) field.toField()],
       isActive: _isActive,
       isFeatured: _isFeatured,
     ).toJson();
@@ -382,6 +392,72 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                   decoration: const InputDecoration(
                     labelText: 'Texto a pedir al cliente',
                     hintText: 'Nombre del bebé',
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _Section(
+            title: 'Opciones a elegir',
+            children: [
+              const Text(
+                'Listas de las que el cliente elige un valor, p. ej. el color '
+                'del lazo. No cambian el precio ni el stock: para eso, usa '
+                'variantes.',
+              ),
+              for (final (index, field) in _choiceFields.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: field.label,
+                          decoration: const InputDecoration(
+                            labelText: 'Nombre',
+                            hintText: 'Color del lazo',
+                          ),
+                          validator: (v) => (v ?? '').trim().isEmpty
+                              ? 'Ponle un nombre'
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: field.options,
+                          decoration: const InputDecoration(
+                            labelText: 'Valores, separados por comas',
+                            hintText: 'Rojo, Azul, Verde',
+                          ),
+                          validator: (v) =>
+                              _ChoiceFieldControllers.split(v ?? '').isEmpty
+                              ? 'Añade al menos un valor'
+                              : null,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Quitar lista',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => setState(
+                          () => _choiceFields.removeAt(index).dispose(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_choiceFields.length < 5)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Añadir lista'),
+                    onPressed: () => setState(
+                      () => _choiceFields.add(_ChoiceFieldControllers()),
+                    ),
                   ),
                 ),
             ],
@@ -755,5 +831,29 @@ class _ImagesEditorState extends ConsumerState<_ImagesEditor> {
         if (_busy) const LinearProgressIndicator(),
       ],
     );
+  }
+}
+
+/// Editable choice list: its name and its values as "Rojo, Azul, Verde".
+class _ChoiceFieldControllers {
+  _ChoiceFieldControllers([ChoiceField? field])
+    : label = TextEditingController(text: field?.label ?? ''),
+      options = TextEditingController(text: field?.options.join(', ') ?? '');
+
+  final TextEditingController label;
+  final TextEditingController options;
+
+  /// Comma-separated values, trimmed, without blanks or repeats.
+  static List<String> split(String text) => {
+    for (final value in text.split(','))
+      if (value.trim().isNotEmpty) value.trim(),
+  }.toList();
+
+  ChoiceField toField() =>
+      ChoiceField(label: label.text.trim(), options: split(options.text));
+
+  void dispose() {
+    label.dispose();
+    options.dispose();
   }
 }
