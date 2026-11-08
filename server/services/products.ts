@@ -103,7 +103,7 @@ export const productSchema = z.object({
   /** Lists the customer picks one value from (no price or stock of their own). */
   choice_fields: z
     .array(choiceFieldSchema)
-    .max(5)
+    .max(10)
     .default([])
     .refine((fields) => new Set(fields.map((f) => f.label.toLowerCase())).size === fields.length, {
       message: 'Two choice lists have the same name',

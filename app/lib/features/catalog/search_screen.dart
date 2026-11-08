@@ -8,7 +8,7 @@ import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
 import 'product_card.dart';
 
-/// Product search by name (`/buscar?q=...`). The text lives in the URL, so a
+/// Product search by name and description (`/buscar?q=...`). The text lives in the URL, so a
 /// search can be reloaded, shared and reached with the back button.
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key, required this.query});
@@ -63,7 +63,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 autofocus: query.isEmpty,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: 'Busca por nombre: bola, taza, chupetero...',
+                  hintText: 'Busca productos: bola, taza, vinilo...',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _text.text.isEmpty
                       ? null
