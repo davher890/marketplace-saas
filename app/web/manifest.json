@@ -3,7 +3,7 @@
     "short_name": "Doña Galleta",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#BBCBC1",
+    "background_color": "#B9C9BE",
     "theme_color": "#37453B",
     "description": "Regalos personalizados hechos a mano",
     "orientation": "portrait-primary",
