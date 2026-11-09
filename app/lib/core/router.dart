@@ -111,6 +111,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             (state) => AdminProductsScreen(
               onlyUncategorized:
                   state.uri.queryParameters['sin_categoria'] == '1',
+              onlyWithoutPhoto: state.uri.queryParameters['sin_foto'] == '1',
             ),
           ),
           _adminRoute('/admin/products/new', (_) => const ProductFormScreen()),

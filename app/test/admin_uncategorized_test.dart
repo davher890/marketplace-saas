@@ -7,15 +7,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
-Product _product(String name, List<String> categories) => Product.fromJson({
-  'id': name,
-  'name': name,
-  'slug': name.toLowerCase(),
-  'base_price_cents': 1000,
-  'category_ids': categories,
-  'product_variants': [],
-  'product_images': [],
-});
+Product _product(String name, List<String> categories, {bool photo = true}) =>
+    Product.fromJson({
+      'id': name,
+      'name': name,
+      'slug': name.toLowerCase(),
+      'base_price_cents': 1000,
+      'category_ids': categories,
+      'product_variants': [],
+      'product_images': [
+        if (photo)
+          {
+            'id': 'i-$name',
+            'product_id': name,
+            'url': 'https://img.test/$name.jpg',
+          },
+      ],
+    });
 
 void main() {
   Future<GoRouter> pumpAdmin(
@@ -41,6 +49,7 @@ void main() {
               builder: (_, state) => AdminProductsScreen(
                 onlyUncategorized:
                     state.uri.queryParameters['sin_categoria'] == '1',
+                onlyWithoutPhoto: state.uri.queryParameters['sin_foto'] == '1',
               ),
             ),
           ],
@@ -74,11 +83,57 @@ void main() {
     );
   });
 
-  testWidgets('no warning when every product has a category', (tester) async {
+  testWidgets('no warnings when every product has category and photo', (
+    tester,
+  ) async {
     await pumpAdmin(tester, [
       _product('Taza', ['c1']),
     ]);
     expect(find.textContaining('sin categoría'), findsNothing);
+    expect(find.textContaining('sin foto'), findsNothing);
+  });
+
+  testWidgets('warns about products without photo, and lists them', (
+    tester,
+  ) async {
+    final router = await pumpAdmin(tester, [
+      _product('Taza', ['c1']),
+      _product('Body', ['c1'], photo: false),
+    ]);
+    expect(
+      find.text(
+        'Hay 1 producto sin foto (Body): se ve en la tienda sin imagen.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('sin categoría'), findsNothing);
+
+    await tester.tap(find.text('Revisar'));
+    await tester.pumpAndSettle();
+    expect(router.state.uri.toString(), '/admin/products?sin_foto=1');
+    expect(find.text('Taza'), findsNothing);
+    expect(find.text('Body'), findsWidgets);
+  });
+
+  testWidgets('both warnings at once, and both filters together', (
+    tester,
+  ) async {
+    final router = await pumpAdmin(tester, [
+      _product('Taza', ['c1']),
+      _product('Body', [], photo: false),
+      _product('Gorro', []),
+    ], location: '/admin/products?sin_categoria=1');
+    expect(find.textContaining('sin categoría'), findsWidgets);
+    expect(find.textContaining('sin foto (Body)'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilterChip, 'Sin foto (1)'));
+    await tester.pumpAndSettle();
+    expect(
+      router.state.uri.toString(),
+      '/admin/products?sin_categoria=1&sin_foto=1',
+    );
+    expect(find.text('Gorro'), findsNothing);
+    expect(find.text('Body'), findsWidgets);
   });
 
   testWidgets('"Revisar" lists only the products without category', (

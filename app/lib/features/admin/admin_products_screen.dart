@@ -9,10 +9,17 @@ import '../../repositories/admin_repository.dart';
 import '../../widgets/common.dart';
 
 class AdminProductsScreen extends ConsumerStatefulWidget {
-  const AdminProductsScreen({super.key, this.onlyUncategorized = false});
+  const AdminProductsScreen({
+    super.key,
+    this.onlyUncategorized = false,
+    this.onlyWithoutPhoto = false,
+  });
 
-  /// From `?sin_categoria=1` (the warning's "Revisar" button).
+  /// From `?sin_categoria=1` (the warnings' "Revisar" button).
   final bool onlyUncategorized;
+
+  /// From `?sin_foto=1`.
+  final bool onlyWithoutPhoto;
 
   @override
   ConsumerState<AdminProductsScreen> createState() =>
@@ -27,7 +34,22 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
     final products = ref.watch(adminProductsProvider);
     final uncategorizedCount =
         ref.watch(uncategorizedProductsProvider).value?.length ?? 0;
+    final withoutPhotoCount =
+        ref.watch(productsWithoutPhotoProvider).value?.length ?? 0;
     final onlyUncategorized = widget.onlyUncategorized;
+    final onlyWithoutPhoto = widget.onlyWithoutPhoto;
+
+    /// The list's address with one filter turned on or off.
+    String filterPath({bool? uncategorized, bool? withoutPhoto}) {
+      final query = [
+        if (uncategorized ?? onlyUncategorized) 'sin_categoria=1',
+        if (withoutPhoto ?? onlyWithoutPhoto) 'sin_foto=1',
+      ];
+      return query.isEmpty
+          ? '/admin/products'
+          : '/admin/products?${query.join('&')}';
+    }
+
     final categories = ref.watch(adminCategoriesProvider).value ?? const [];
     String categoryNames(List<String> ids) {
       final names = [
@@ -61,19 +83,30 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
               onChanged: (value) =>
                   setState(() => _search = value.trim().toLowerCase()),
             ),
-            if (onlyUncategorized || uncategorizedCount > 0) ...[
+            if (onlyUncategorized ||
+                onlyWithoutPhoto ||
+                uncategorizedCount > 0 ||
+                withoutPhotoCount > 0) ...[
               const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilterChip(
-                  label: Text('Sin categoría ($uncategorizedCount)'),
-                  selected: onlyUncategorized,
-                  onSelected: (selected) => context.go(
-                    selected
-                        ? '/admin/products?sin_categoria=1'
-                        : '/admin/products',
-                  ),
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (onlyUncategorized || uncategorizedCount > 0)
+                    FilterChip(
+                      label: Text('Sin categoría ($uncategorizedCount)'),
+                      selected: onlyUncategorized,
+                      onSelected: (selected) =>
+                          context.go(filterPath(uncategorized: selected)),
+                    ),
+                  if (onlyWithoutPhoto || withoutPhotoCount > 0)
+                    FilterChip(
+                      label: Text('Sin foto ($withoutPhotoCount)'),
+                      selected: onlyWithoutPhoto,
+                      onSelected: (selected) =>
+                          context.go(filterPath(withoutPhoto: selected)),
+                    ),
+                ],
               ),
             ],
             const SizedBox(height: 16),
@@ -85,6 +118,7 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                     .where(
                       (p) =>
                           (!onlyUncategorized || p.categoryIds.isEmpty) &&
+                          (!onlyWithoutPhoto || p.images.isEmpty) &&
                           (_search.isEmpty ||
                               p.name.toLowerCase().contains(_search)),
                     )
@@ -94,8 +128,8 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                     padding: const EdgeInsets.all(32),
                     child: Center(
                       child: Text(
-                        onlyUncategorized
-                            ? 'Todos los productos tienen categoría.'
+                        onlyUncategorized || onlyWithoutPhoto
+                            ? 'Ningún producto cumple el filtro.'
                             : 'No hay productos.',
                       ),
                     ),

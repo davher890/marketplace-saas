@@ -36,11 +36,35 @@ class AdminShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final uncategorized =
         ref.watch(uncategorizedProductsProvider).value ?? const <Product>[];
-    final page = uncategorized.isEmpty
+    final withoutPhoto =
+        ref.watch(productsWithoutPhotoProvider).value ?? const <Product>[];
+    final warnings = [
+      if (uncategorized.isNotEmpty)
+        _ProductsWarning(
+          products: uncategorized,
+          missing: 'sin categoría',
+          consequence:
+              'no aparece en la tienda (ni en los menús ni en el '
+              'buscador)',
+          consequencePlural:
+              'no aparecen en la tienda (ni en los menús ni en '
+              'el buscador)',
+          reviewPath: '/admin/products?sin_categoria=1',
+        ),
+      if (withoutPhoto.isNotEmpty)
+        _ProductsWarning(
+          products: withoutPhoto,
+          missing: 'sin foto',
+          consequence: 'se ve en la tienda sin imagen',
+          consequencePlural: 'se ven en la tienda sin imagen',
+          reviewPath: '/admin/products?sin_foto=1',
+        ),
+    ];
+    final page = warnings.isEmpty
         ? child
         : Column(
             children: [
-              _UncategorizedWarning(products: uncategorized),
+              ...warnings,
               Expanded(child: child),
             ],
           );
@@ -104,11 +128,24 @@ class AdminShell extends ConsumerWidget {
   }
 }
 
-/// "Hay 2 productos sin categoría…" with a button to see them.
-class _UncategorizedWarning extends StatelessWidget {
-  const _UncategorizedWarning({required this.products});
+/// "Hay 2 productos sin foto (…): se ven en la tienda sin imagen", with a
+/// button to see them in the product list.
+class _ProductsWarning extends StatelessWidget {
+  const _ProductsWarning({
+    required this.products,
+    required this.missing,
+    required this.consequence,
+    required this.consequencePlural,
+    required this.reviewPath,
+  });
 
   final List<Product> products;
+
+  /// What the products lack, e.g. "sin foto".
+  final String missing;
+  final String consequence;
+  final String consequencePlural;
+  final String reviewPath;
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +154,7 @@ class _UncategorizedWarning extends StatelessWidget {
     final more = count > 3 ? ' y ${count - 3} más' : '';
     return Material(
       color: const Color(0xFFFFF3CD),
+      shape: const Border(bottom: BorderSide(color: Color(0xFFF0DFA0))),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
         child: Row(
@@ -126,15 +164,14 @@ class _UncategorizedWarning extends StatelessWidget {
             Expanded(
               child: Text(
                 count == 1
-                    ? 'Hay 1 producto sin categoría ($names): no aparece en '
-                          'ningún menú de la tienda.'
-                    : 'Hay $count productos sin categoría ($names$more): no '
-                          'aparecen en ningún menú de la tienda.',
+                    ? 'Hay 1 producto $missing ($names): $consequence.'
+                    : 'Hay $count productos $missing ($names$more): '
+                          '$consequencePlural.',
                 style: const TextStyle(color: Color(0xFF5C4800)),
               ),
             ),
             TextButton(
-              onPressed: () => context.go('/admin/products?sin_categoria=1'),
+              onPressed: () => context.go(reviewPath),
               child: const Text('Revisar'),
             ),
           ],
