@@ -106,7 +106,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             '/admin/orders/:id',
             (state) => AdminOrderScreen(orderId: state.pathParameters['id']!),
           ),
-          _adminRoute('/admin/products', (_) => const AdminProductsScreen()),
+          _adminRoute(
+            '/admin/products',
+            (state) => AdminProductsScreen(
+              onlyUncategorized:
+                  state.uri.queryParameters['sin_categoria'] == '1',
+            ),
+          ),
           _adminRoute('/admin/products/new', (_) => const ProductFormScreen()),
           _adminRoute(
             '/admin/products/:id',

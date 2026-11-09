@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../models/product.dart';
+import '../../repositories/admin_repository.dart';
 
-/// Admin layout: navigation rail on wide screens, bottom bar on phones.
-class AdminShell extends StatelessWidget {
+/// Admin layout: navigation rail on wide screens, bottom bar on phones, and
+/// a warning on top while some product has no category.
+class AdminShell extends ConsumerWidget {
   const AdminShell({super.key, required this.child});
 
   final Widget child;
@@ -29,7 +33,17 @@ class AdminShell extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uncategorized =
+        ref.watch(uncategorizedProductsProvider).value ?? const <Product>[];
+    final page = uncategorized.isEmpty
+        ? child
+        : Column(
+            children: [
+              _UncategorizedWarning(products: uncategorized),
+              Expanded(child: child),
+            ],
+          );
     final path = GoRouterState.of(context).uri.path;
     final selected = _destinations
         .indexWhere((d) => path.startsWith(d.path))
@@ -72,10 +86,10 @@ class AdminShell extends StatelessWidget {
                       ),
                   ],
                 ),
-                Expanded(child: child),
+                Expanded(child: page),
               ],
             )
-          : child,
+          : page,
       bottomNavigationBar: isWide
           ? null
           : NavigationBar(
@@ -86,6 +100,46 @@ class AdminShell extends StatelessWidget {
                   NavigationDestination(icon: Icon(d.icon), label: d.label),
               ],
             ),
+    );
+  }
+}
+
+/// "Hay 2 productos sin categoría…" with a button to see them.
+class _UncategorizedWarning extends StatelessWidget {
+  const _UncategorizedWarning({required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = products.length;
+    final names = products.take(3).map((p) => p.name).join(', ');
+    final more = count > 3 ? ' y ${count - 3} más' : '';
+    return Material(
+      color: const Color(0xFFFFF3CD),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFF8A6D00)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                count == 1
+                    ? 'Hay 1 producto sin categoría ($names): no aparece en '
+                          'ningún menú de la tienda.'
+                    : 'Hay $count productos sin categoría ($names$more): no '
+                          'aparecen en ningún menú de la tienda.',
+                style: const TextStyle(color: Color(0xFF5C4800)),
+              ),
+            ),
+            TextButton(
+              onPressed: () => context.go('/admin/products?sin_categoria=1'),
+              child: const Text('Revisar'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

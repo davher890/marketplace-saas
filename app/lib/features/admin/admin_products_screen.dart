@@ -9,7 +9,10 @@ import '../../repositories/admin_repository.dart';
 import '../../widgets/common.dart';
 
 class AdminProductsScreen extends ConsumerStatefulWidget {
-  const AdminProductsScreen({super.key});
+  const AdminProductsScreen({super.key, this.onlyUncategorized = false});
+
+  /// From `?sin_categoria=1` (the warning's "Revisar" button).
+  final bool onlyUncategorized;
 
   @override
   ConsumerState<AdminProductsScreen> createState() =>
@@ -22,6 +25,9 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
   @override
   Widget build(BuildContext context) {
     final products = ref.watch(adminProductsProvider);
+    final uncategorizedCount =
+        ref.watch(uncategorizedProductsProvider).value?.length ?? 0;
+    final onlyUncategorized = widget.onlyUncategorized;
     final categories = ref.watch(adminCategoriesProvider).value ?? const [];
     String categoryNames(List<String> ids) {
       final names = [
@@ -55,6 +61,21 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
               onChanged: (value) =>
                   setState(() => _search = value.trim().toLowerCase()),
             ),
+            if (onlyUncategorized || uncategorizedCount > 0) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilterChip(
+                  label: Text('Sin categoría ($uncategorizedCount)'),
+                  selected: onlyUncategorized,
+                  onSelected: (selected) => context.go(
+                    selected
+                        ? '/admin/products?sin_categoria=1'
+                        : '/admin/products',
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             AsyncView(
               value: products,
@@ -63,14 +84,21 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                 final filtered = products
                     .where(
                       (p) =>
-                          _search.isEmpty ||
-                          p.name.toLowerCase().contains(_search),
+                          (!onlyUncategorized || p.categoryIds.isEmpty) &&
+                          (_search.isEmpty ||
+                              p.name.toLowerCase().contains(_search)),
                     )
                     .toList();
                 if (filtered.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: Text('No hay productos.')),
+                  return Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Center(
+                      child: Text(
+                        onlyUncategorized
+                            ? 'Todos los productos tienen categoría.'
+                            : 'No hay productos.',
+                      ),
+                    ),
                   );
                 }
                 return Column(
