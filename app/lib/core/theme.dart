@@ -120,11 +120,21 @@ class AppTheme {
           borderSide: const BorderSide(color: AppColors.forest, width: 1.5),
         ),
       ),
-      chipTheme: const ChipThemeData(
+      chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
         selectedColor: AppColors.forest,
         secondarySelectedColor: AppColors.forest,
         side: BorderSide.none,
+        // Selected chips are dark green: their text and check mark must be
+        // light to be read.
+        labelStyle: TextStyle(
+          color: WidgetStateColor.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? AppColors.cream
+                : AppColors.ink,
+          ),
+        ),
+        checkmarkColor: AppColors.cream,
       ),
       navigationRailTheme: const NavigationRailThemeData(
         backgroundColor: AppColors.sageLight,
