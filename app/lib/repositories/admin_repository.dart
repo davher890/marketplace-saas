@@ -151,6 +151,22 @@ final adminProductsProvider = FutureProvider<List<Product>>((ref) {
   return ref.watch(adminRepositoryProvider).fetchAllProducts();
 });
 
+/// Products in no category: they don't appear in any menu of the shop (only
+/// in search, if active). The admin shows a warning while there are any.
+final uncategorizedProductsProvider = FutureProvider<List<Product>>((
+  ref,
+) async {
+  final products = await ref.watch(adminProductsProvider.future);
+  return products.where((p) => p.categoryIds.isEmpty).toList();
+});
+
+/// Products with no photo: the shop shows them with an empty card. The
+/// admin shows a warning while there are any.
+final productsWithoutPhotoProvider = FutureProvider<List<Product>>((ref) async {
+  final products = await ref.watch(adminProductsProvider.future);
+  return products.where((p) => p.images.isEmpty).toList();
+});
+
 final adminCategoriesProvider = FutureProvider<List<Category>>((ref) {
   ref.watch(currentUserProvider);
   return ref.watch(adminRepositoryProvider).fetchAllCategories();

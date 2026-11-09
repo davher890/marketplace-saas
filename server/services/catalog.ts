@@ -117,11 +117,32 @@ export interface ProductFilter {
   featured?: boolean;
   /**
    * Text to find in the product name or description (accents and case
-   * ignored). Products matching by name come first.
+   * ignored). Products matching by name come first. Only products in at
+   * least one visible category are included.
    */
   search?: string | null;
   /** Cheapest first by default. */
   sort?: ProductSort;
+}
+
+/**
+ * Categories a customer can browse: active, and under an active parent (a
+ * hidden main category hides its sub-categories too).
+ */
+async function visibleCategoryIds(): Promise<Set<string>> {
+  const active = unwrap(
+    await supabase().from('categories').select('id, parent_id').eq('is_active', true),
+  ) as { id: string; parent_id: string | null }[];
+  const activeIds = new Set(active.map((c) => c.id));
+  return new Set(active.filter((c) => !c.parent_id || activeIds.has(c.parent_id)).map((c) => c.id));
+}
+
+/**
+ * Whether search may show the product: it's in at least one visible
+ * category. Products in no category, or only in hidden ones, are left out.
+ */
+export function inVisibleCategory(categoryIds: string[], visible: Set<string>): boolean {
+  return categoryIds.some((id) => visible.has(id));
 }
 
 /** Ids of the products listed in any of these categories. */
@@ -147,8 +168,11 @@ export async function listProducts(filter: ProductFilter): Promise<ProductRow[]>
   const sorted = sortProducts(rows.map(shapeProduct), filter.sort ?? 'price');
   const search = filter.search?.trim();
   if (!search) return sorted;
+  // Only products in some visible category show up in search.
+  const visible = await visibleCategoryIds();
+  const shown = sorted.filter((product) => inVisibleCategory(product.category_ids, visible));
   // Name matches first, then description matches, each in the chosen order.
-  const scored = sorted.map((product) => ({ product, score: searchScore(product, search) }));
+  const scored = shown.map((product) => ({ product, score: searchScore(product, search) }));
   return [2, 1].flatMap((score) => scored.filter((s) => s.score === score).map((s) => s.product));
 }
 
