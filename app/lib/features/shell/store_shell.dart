@@ -38,10 +38,7 @@ class StoreShell extends ConsumerWidget {
           onTap: () => context.go('/'),
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              'Doña Galleta',
-              style: AppTheme.wordmark(size: isWide ? 60 : 38),
-            ),
+            child: StoreLogo(height: isWide ? 64 : 40),
           ),
         ),
         actions: [
@@ -194,9 +191,9 @@ class _CategoryDrawer extends StatelessWidget {
       child: ListView(
         children: [
           DrawerHeader(
-            child: Center(
-              child: Text('Doña Galleta', style: AppTheme.wordmark(size: 44)),
-            ),
+            // The logo's own background, so it doesn't show as a box.
+            decoration: const BoxDecoration(color: AppColors.sage),
+            child: Center(child: StoreLogo(height: 56)),
           ),
           ListTile(
             leading: const Icon(Icons.home_outlined),
@@ -389,6 +386,24 @@ class _FooterLink extends StatelessWidget {
           decorationColor: AppColors.cream,
         ),
       ),
+    );
+  }
+}
+
+/// The "Doña Galleta" logo. The image has the page's sage background
+/// ([AppColors.sage]), so it only blends in on that background.
+class StoreLogo extends StatelessWidget {
+  const StoreLogo({super.key, required this.height});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/images/logo.jpg',
+      height: height,
+      semanticLabel: 'Doña Galleta',
+      filterQuality: FilterQuality.medium,
     );
   }
 }

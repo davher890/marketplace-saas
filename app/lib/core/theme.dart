@@ -5,8 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 class AppColors {
   const AppColors._();
 
-  /// Sage green used as the page background.
-  static const sage = Color(0xFFBBCBC1);
+  /// Sage green used as the page background: the exact background of the
+  /// logo image (assets/images/logo.jpg), so the logo blends into the page.
+  static const sage = Color(0xFFB9C9BE);
 
   /// Lighter sage for cards and surfaces.
   static const sageLight = Color(0xFFDCE5DF);
@@ -19,6 +20,9 @@ class AppColors {
 
   /// Brown used in the footer.
   static const cocoa = Color(0xFF493C36);
+
+  /// Brown of the logo's handwriting, used for titles.
+  static const chocolate = Color(0xFF3E2717);
 
   /// Almost-black brown used for body text.
   static const ink = Color(0xFF251E1B);
@@ -57,9 +61,13 @@ class AppTheme {
       displayColor: AppColors.ink,
     );
 
-    // Headings use Amatic SC like the site; body text uses Raleway.
-    TextStyle? heading(TextStyle? base) =>
-        GoogleFonts.amaticSc(textStyle: base, fontWeight: FontWeight.w700);
+    // Headings use Amatic SC like the site, in the logo's brown; body text
+    // uses Raleway.
+    TextStyle? heading(TextStyle? base) => GoogleFonts.amaticSc(
+      textStyle: base,
+      fontWeight: FontWeight.w700,
+      color: AppColors.chocolate,
+    );
 
     final textTheme = bodyText.copyWith(
       displayLarge: heading(bodyText.displayLarge),

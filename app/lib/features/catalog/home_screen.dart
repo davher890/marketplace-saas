@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
 import '../shell/store_shell.dart';
@@ -25,7 +24,7 @@ class HomeScreen extends ConsumerWidget {
           Text(
             'Regalos hechos a mano, con mucho cariño',
             textAlign: TextAlign.center,
-            style: textTheme.displayMedium?.copyWith(color: AppColors.forest),
+            style: textTheme.displayMedium,
           ),
           const SizedBox(height: 24),
           // Quick links to the categories, only on narrow screens: wider
