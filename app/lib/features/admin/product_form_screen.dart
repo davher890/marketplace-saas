@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/money.dart';
 import '../../core/slug.dart';
@@ -132,6 +134,17 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
       field.dispose();
     }
     super.dispose();
+  }
+
+  /// The product's store page. On the web it opens in a new tab, so the form
+  /// stays open; in the app it goes on top of the form (back returns to it).
+  void _viewInStore(String slug) {
+    final path = '/product/${Uri.encodeComponent(slug)}';
+    if (kIsWeb) {
+      launchUrl(Uri.base.resolve(path), webOnlyWindowName: '_blank');
+    } else {
+      context.push(path);
+    }
   }
 
   Future<void> _save() async {
@@ -318,7 +331,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
               if (!_isNew)
                 IconButton(
                   tooltip: 'Ver en la tienda',
-                  onPressed: () => context.go('/product/${_p!.slug}'),
+                  onPressed: () => _viewInStore(_p!.slug),
                   icon: const Icon(Icons.open_in_new),
                 ),
               if (!_isNew)
