@@ -132,6 +132,13 @@ class AdminRepository {
     await _api.patch('/api/admin/products/$productId', {'is_active': isActive});
   }
 
+  /// Copies the product (hidden, "(copia)" in the name, variants without
+  /// SKU, its own copy of each photo) and returns the copy.
+  Future<Product> duplicateProduct(String productId) async => Product.fromJson(
+    await _api.post('/api/admin/products/$productId/duplicate')
+        as Map<String, dynamic>,
+  );
+
   Future<void> deleteProduct(String productId) async {
     await _api.delete('/api/admin/products/$productId');
   }

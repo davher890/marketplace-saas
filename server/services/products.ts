@@ -248,6 +248,120 @@ export async function patchProduct(
   return getProduct(productId);
 }
 
+// -----------------------------------------------------------------------------
+// Duplicate
+// -----------------------------------------------------------------------------
+
+/** A free slug for a copy: "<slug>-copia", then "<slug>-copia-2", "-3"... */
+async function copySlug(slug: string): Promise<string> {
+  const base = `${slug}-copia`;
+  const rows = unwrap(
+    await supabaseAdmin().from('products').select('slug').like('slug', `${base}%`),
+  ) as { slug: string }[];
+  const taken = new Set(rows.map((row) => row.slug));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+type FullProduct = Product & {
+  name: string;
+  slug: string;
+  category_ids: string[];
+  product_variants: (Record<string, unknown> & { id: string; position: number })[];
+  product_images: {
+    id: string;
+    position: number;
+    url: string;
+    storage_path: string | null;
+    alt_text: string | null;
+    variant_id: string | null;
+  }[];
+};
+
+/**
+ * Copies a product with its variants, categories and images. The copy is
+ * hidden and not featured, named "<name> (copia)" with a free slug, so it
+ * can be reviewed before it shows in the shop. Variants lose their SKU
+ * (SKUs are unique) and stored images get their own copy of the file, so
+ * deleting either product never removes the other's photos. If any step
+ * fails, the half-made copy is deleted.
+ */
+export async function duplicateProduct(productId: string): Promise<Product> {
+  const source = (await getProduct(productId)) as FullProduct;
+  const db = supabaseAdmin();
+  const {
+    id: _id,
+    created_at: _created,
+    updated_at: _updated,
+    product_variants: variants,
+    product_images: sourceImages,
+    product_categories: _links,
+    category_ids: categoryIds,
+    ...fields
+  } = source;
+
+  const created = unwrap(
+    await db
+      .from('products')
+      .insert({
+        ...fields,
+        name: `${source.name} (copia)`.slice(0, 200),
+        slug: await copySlug(source.slug),
+        is_active: false,
+        is_featured: false,
+      })
+      .select('id')
+      .single(),
+  ) as { id: string };
+
+  const copiedFiles: string[] = [];
+  try {
+    const variantIds = new Map<string, string>();
+    for (const variant of variants) {
+      const { id, product_id: _p, created_at: _c, updated_at: _u, sku: _sku, ...rest } = variant;
+      const copy = unwrap(
+        await db
+          .from('product_variants')
+          .insert({ ...rest, product_id: created.id, sku: null })
+          .select('id')
+          .single(),
+      ) as { id: string };
+      variantIds.set(id, copy.id);
+    }
+
+    await syncProductCategories(db, created.id, categoryIds);
+
+    for (const image of sourceImages) {
+      let storagePath: string | null = null;
+      let url = image.url;
+      if (image.storage_path) {
+        storagePath = await images.copyImageFile(image.storage_path, created.id);
+        copiedFiles.push(storagePath);
+        url = images.publicImageUrl(storagePath);
+      }
+      check(
+        (
+          await db.from('product_images').insert({
+            product_id: created.id,
+            variant_id: image.variant_id ? (variantIds.get(image.variant_id) ?? null) : null,
+            url,
+            storage_path: storagePath,
+            alt_text: image.alt_text,
+            position: image.position,
+          })
+        ).error,
+      );
+    }
+  } catch (error) {
+    await db.from('products').delete().eq('id', created.id);
+    await images.removeImageFiles(copiedFiles);
+    throw error;
+  }
+  return getProduct(created.id);
+}
+
 /** Deletes the product (variants and images cascade) and its stored files. */
 export async function deleteProduct(productId: string): Promise<void> {
   const db = supabaseAdmin();

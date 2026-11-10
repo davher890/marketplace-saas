@@ -73,6 +73,19 @@ export function withImageUrls<T extends { url?: unknown; storage_path?: string |
   return images;
 }
 
+/**
+ * Copies a stored image into another product's folder (e.g. when a product
+ * is duplicated), so each product owns its files and deleting one never
+ * removes the other's. Returns the new `storage_path`.
+ */
+export async function copyImageFile(storagePath: string, toProductId: string): Promise<string> {
+  const extension = storagePath.includes('.') ? storagePath.split('.').pop()!.toLowerCase() : 'jpg';
+  const target = `${toProductId}/${Date.now()}-${randomUUID().slice(0, 8)}.${extension}`;
+  const { error } = await supabaseAdmin().storage.from(BUCKET).copy(storagePath, target);
+  if (error) throw new Error(`Could not copy image ${storagePath}: ${error.message}`);
+  return target;
+}
+
 /** Deletes stored files. Best effort: a leftover file must not fail the request. */
 export async function removeImageFiles(paths: (string | null | undefined)[]): Promise<void> {
   const files = paths.filter((path): path is string => Boolean(path));

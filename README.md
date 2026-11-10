@@ -172,6 +172,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Status changes: only applied if the order still has the status that was read (so two changes can't both win), logged with who/when, `paid_at` / `shipped_at` stamped, cancelling restores stock, cancelled orders are final | `orders.ts` |
 | Customers cancel only their own *pending* orders; admins any order | `orders.ts` |
 | Stock: compare-and-swap updates (`… where stock = <value read>`, retried), so concurrent checkouts can't oversell | `stock.ts` |
+| Duplicating a product: the copy is hidden until reviewed, its variants have no SKU (SKUs are unique), and stored photos are copied, so deleting either product never removes the other's files. A failed copy is deleted again | `products.ts`, `images.ts` |
 | Products saved with their variants; slug, SKUs and variant ownership validated before writing anything | `products.ts` |
 | Categories: two levels (menu + dropdowns), unique slug, a parent must be a main category, new ones go last, reordered by swapping with a sibling. Deleting is refused while a category has products or sub-categories (deactivate it to hide it) | `categories.ts` |
 | Images: uploaded straight to Storage with a signed upload from the API (JPG/PNG/WEBP/GIF only, into the product's folder), public URLs built from `storage_path` when reading, files deleted with the image or product | `images.ts` |
@@ -521,6 +522,7 @@ needs the admin role.
 | POST | `/api/admin/categories/:id/move` | `{direction: "up" \| "down"}` among its siblings. |
 | GET / POST | `/api/admin/products` | List all / create with `variants` and `category_ids` (the first is the main category). |
 | GET / PUT / PATCH / DELETE | `/api/admin/products/:id` | Read / replace with variants / toggle `is_active`, `is_featured` / delete. |
+| POST | `/api/admin/products/:id/duplicate` | Copy the product: hidden, not featured, "(copia)" in the name, a free slug (`-copia`, `-copia-2`...), variants without SKU, same categories, and its own copy of each stored photo. Returns the copy (201). |
 | POST | `/api/admin/products/:id/images/upload-url` | `{file_name}` → `{bucket, path, token, content_type}`: a one-time signed upload for the Supabase SDK. |
 | POST | `/api/admin/products/:id/images` | Register `{storage_path}` or `{url}`. |
 | DELETE | `/api/admin/images/:id` | Delete an image (and its file). |
