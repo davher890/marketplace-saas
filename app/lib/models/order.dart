@@ -101,6 +101,31 @@ class Order {
 
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
+  /// What the admin pastes to the supplier to place the order: the order
+  /// number and, per line, units, product, variant and personalisation. No
+  /// prices or customer data.
+  ///
+  /// ```text
+  /// Pedido #1004
+  ///
+  /// - 2 × Pack taza y manta · Rosa
+  ///   Personalización: Color del lazo: Azul · Lucía
+  /// - 1 × Bola de madera
+  /// ```
+  String get supplierText {
+    final lines = ['Pedido #$orderNumber', ''];
+    for (final item in items) {
+      final variant = item.variantName.isEmpty || item.variantName == 'Default'
+          ? ''
+          : ' · ${item.variantName}';
+      lines.add('- ${item.quantity} × ${item.productName}$variant');
+      if (item.customization.trim().isNotEmpty) {
+        lines.add('  Personalización: ${item.customization.trim()}');
+      }
+    }
+    return lines.join('\n');
+  }
+
   factory Order.fromJson(Map<String, dynamic> json) => Order(
     id: json['id'] as String,
     orderNumber: json['order_number'] as int,

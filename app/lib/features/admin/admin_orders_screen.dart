@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -183,6 +184,8 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
                     style: Theme.of(context).textTheme.displaySmall,
                   ),
                 ),
+                _CopyForSupplierButton(order: order),
+                const SizedBox(width: 8),
                 OrderStatusChip(order.status),
               ],
             ),
@@ -254,6 +257,41 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Copies the items to paste to the supplier ([Order.supplierText]). On
+/// narrow screens only the icon is shown.
+class _CopyForSupplierButton extends StatelessWidget {
+  const _CopyForSupplierButton({required this.order});
+
+  final Order order;
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: order.supplierText));
+    if (context.mounted) {
+      showMessage(
+        context,
+        'Encargo copiado: pégalo en el mensaje al proveedor.',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const label = 'Copiar encargo';
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return IconButton(
+        tooltip: label,
+        onPressed: () => _copy(context),
+        icon: const Icon(Icons.content_paste_go_outlined),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: () => _copy(context),
+      icon: const Icon(Icons.content_paste_go_outlined),
+      label: const Text(label),
     );
   }
 }
