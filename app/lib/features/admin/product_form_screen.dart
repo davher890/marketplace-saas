@@ -103,6 +103,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   ];
   bool _slugEdited = false;
   bool _saving = false;
+  bool _duplicating = false;
 
   bool get _isNew => _p == null;
 
@@ -198,6 +199,27 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     ref.invalidate(featuredProductsProvider);
     ref.invalidate(categoryProductsProvider);
     ref.invalidate(productBySlugProvider);
+  }
+
+  /// Makes a hidden copy of the saved product and opens it for editing.
+  Future<void> _duplicate() async {
+    setState(() => _duplicating = true);
+    try {
+      final copy = await ref
+          .read(adminRepositoryProvider)
+          .duplicateProduct(_p!.id);
+      ref.invalidate(adminProductsProvider);
+      if (!mounted) return;
+      showMessage(
+        context,
+        'Copia creada: "${copy.name}". Está oculta hasta que la actives.',
+      );
+      context.go('/admin/products/${copy.id}');
+    } catch (error) {
+      if (mounted) showMessage(context, describeError(error));
+    } finally {
+      if (mounted) setState(() => _duplicating = false);
+    }
   }
 
   Future<void> _delete() async {
@@ -333,6 +355,17 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
                   tooltip: 'Ver en la tienda',
                   onPressed: () => _viewInStore(_p!.slug),
                   icon: const Icon(Icons.open_in_new),
+                ),
+              if (!_isNew)
+                IconButton(
+                  tooltip: 'Duplicar',
+                  onPressed: _duplicating ? null : _duplicate,
+                  icon: _duplicating
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.content_copy_outlined),
                 ),
               if (!_isNew)
                 IconButton(

@@ -183,6 +183,10 @@ export const router = new Router()
     await products.deleteProduct(params.id);
     return new Reply(null, 204);
   })
+  .post('/api/admin/products/:id/duplicate', async ({ request, params }) => {
+    await requireAdmin(request);
+    return new Reply(await products.duplicateProduct(params.id), 201);
+  })
   .post('/api/admin/products/:id/images/upload-url', async ({ request, params }) => {
     await requireAdmin(request);
     const { file_name } = await readBody(request, products.uploadUrlSchema);
