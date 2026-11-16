@@ -167,7 +167,10 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
       children: [
         Text(product.name, style: textTheme.displaySmall),
         const SizedBox(height: 8),
-        Text(formatCents(price), style: textTheme.titleLarge),
+        Text(
+          formatCents(price),
+          style: textTheme.titleLarge?.copyWith(color: AppColors.chocolate),
+        ),
         const SizedBox(height: 24),
         if (product.hasOptions) ...[
           Text('Opciones', style: textTheme.titleSmall),
@@ -251,7 +254,10 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
         ],
         if (product.description != null) ...[
           const SizedBox(height: 24),
-          Text(product.description!, style: textTheme.bodyLarge),
+          Text(
+            product.description!,
+            style: textTheme.bodyLarge?.copyWith(color: AppColors.chocolate),
+          ),
         ],
       ],
     );
