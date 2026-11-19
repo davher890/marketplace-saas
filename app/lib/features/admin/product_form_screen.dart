@@ -80,21 +80,30 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     text: _p?.customizationLabel ?? '',
   );
 
-  /// Name of the single option dimension (e.g. "Talla"), empty if none.
-  late final _optionName = TextEditingController(
-    text: _p?.variants.expand((v) => v.options.keys).firstOrNull ?? '',
-  );
+  /// Options the variants combine, e.g. Tamaño (8 cm, 10 cm) and Material.
+  late final List<_OptionControllers> _options = [
+    for (final option in variantOptions(_p?.variants ?? const []))
+      _OptionControllers(option, onChanged: _onOptionChanged),
+  ];
 
   /// Categories the product is listed in; the first one is its main one.
   late final List<String> _categoryIds = [...?_p?.categoryIds];
   late bool _isActive = _p?.isActive ?? true;
   late bool _isFeatured = _p?.isFeatured ?? false;
   late bool _isCustomizable = _p?.isCustomizable ?? false;
-  late final List<_VariantFields> _variants = (_p?.variants.isNotEmpty ?? false)
-      ? _p!.variants
-            .map((v) => _VariantFields(VariantDraft.fromVariant(v)))
-            .toList()
-      : [_VariantFields(VariantDraft())];
+
+  /// Every variant row created while editing, saved or not, so a value typed
+  /// again gets its SKU, price and stock back. Only [_variants] are saved.
+  late final List<_VariantFields> _allVariants = [
+    for (final v in _p?.variants ?? const <ProductVariant>[])
+      _VariantFields(
+        VariantDraft.fromVariant(v)
+          ..options = Map.of(optionsOf(v, _p!.variants)),
+      ),
+  ];
+
+  /// One row per combination of the options' values, in order.
+  late List<_VariantFields> _variants = _arrangeVariants();
 
   /// Lists the customer picks one value from (no price or stock).
   late final List<_ChoiceFieldControllers> _choiceFields = [
@@ -118,24 +127,90 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
 
   @override
   void dispose() {
-    for (final c in [
-      _name,
-      _slug,
-      _description,
-      _price,
-      _customizationLabel,
-      _optionName,
-    ]) {
+    for (final c in [_name, _slug, _description, _price, _customizationLabel]) {
       c.dispose();
     }
-    for (final v in _variants) {
+    for (final v in _allVariants) {
       v.dispose();
+    }
+    for (final option in _options) {
+      option.dispose();
     }
     for (final field in _choiceFields) {
       field.dispose();
     }
     super.dispose();
   }
+
+  /// Rows for the current options: existing variants are kept for their
+  /// combination (see [matchCombinations]), new ones are added.
+  List<_VariantFields> _arrangeVariants() {
+    final options = [
+      for (final o in _options)
+        if (o.name.text.trim().isNotEmpty)
+          (name: o.name.text.trim(), values: o.currentValues),
+    ];
+    final combinations = optionCombinations(options);
+    if (combinations.isEmpty) combinations.add({});
+    final matches = matchCombinations(combinations, [
+      for (final row in _allVariants) row.draft.options,
+    ]);
+    return [
+      for (final (i, combination) in combinations.indexed)
+        switch (matches[i]) {
+          final int j => _allVariants[j]..draft.options = combination,
+          null => _newVariant(combination),
+        },
+    ];
+  }
+
+  _VariantFields _newVariant(Map<String, String> options) {
+    final row = _VariantFields(VariantDraft(options: Map.of(options)));
+    _allVariants.add(row);
+    return row;
+  }
+
+  /// Renames carry the variants' SKU, price and stock over to the new name.
+  void _onOptionChanged(_OptionControllers option) {
+    final name = option.name.text.trim();
+    final values = option.currentValues;
+    final rows = [for (final row in _allVariants) row.draft.options];
+    if (name.isNotEmpty) {
+      if (option.lastName.isNotEmpty && name != option.lastName) {
+        for (final options in rows) {
+          final value = options.remove(option.lastName);
+          if (value != null) options[name] = value;
+        }
+      }
+      // One value edited in place, e.g. "Mediano" → "Mediana".
+      if (values.length == option.lastValues.length) {
+        final changed = [
+          for (var i = 0; i < values.length; i++)
+            if (values[i] != option.lastValues[i]) i,
+        ];
+        if (changed.length == 1) {
+          final i = changed.single;
+          for (final options in rows) {
+            if (options[name] == option.lastValues[i]) {
+              options[name] = values[i];
+            }
+          }
+        }
+      }
+      option.lastName = name;
+    }
+    option.lastValues = values;
+    setState(() => _variants = _arrangeVariants());
+  }
+
+  void _addOption() => setState(
+    () => _options.add(_OptionControllers(null, onChanged: _onOptionChanged)),
+  );
+
+  void _removeOption(int index) => setState(() {
+    _options.removeAt(index).dispose();
+    _variants = _arrangeVariants();
+  });
 
   /// The product's store page. On the web it opens in a new tab, so the form
   /// stays open; in the app it goes on top of the form (back returns to it).
@@ -150,12 +225,17 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_variants.length > maxVariants) {
+      showMessage(
+        context,
+        'Son ${_variants.length} combinaciones; el máximo es $maxVariants. '
+        'Quita algún valor.',
+      );
+      return;
+    }
     setState(() => _saving = true);
 
-    final optionName = _optionName.text.trim();
-    final drafts = [
-      for (final v in _variants) v.toDraft(optionName: optionName),
-    ];
+    final drafts = [for (final v in _variants) v.toDraft()];
     final row = Product(
       id: _p?.id ?? '',
       categoryId: _categoryIds.firstOrNull,
@@ -512,33 +592,77 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
           _Section(
             title: 'Variantes',
             children: [
-              TextFormField(
-                controller: _optionName,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre de la opción',
-                  hintText: 'Talla, Color...',
-                  helperText: 'Déjalo vacío si el producto no tiene opciones',
-                ),
+              const Text(
+                'Opciones que cambian el precio o el stock, p. ej. tamaño y '
+                'material. Se crea una variante por cada combinación de '
+                'valores; desactiva las que no vendas.',
               ),
-              for (final (index, variant) in _variants.indexed)
+              for (final (index, option) in _options.indexed)
+                Padding(
+                  key: ObjectKey(option),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: option.name,
+                          decoration: const InputDecoration(
+                            labelText: 'Opción',
+                            hintText: 'Tamaño',
+                          ),
+                          validator: (v) {
+                            final name = (v ?? '').trim().toLowerCase();
+                            if (name.isEmpty) return 'Ponle un nombre';
+                            final repeated = _options
+                                .where(
+                                  (o) =>
+                                      o.name.text.trim().toLowerCase() == name,
+                                )
+                                .length;
+                            return repeated > 1 ? 'Nombre repetido' : null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: option.values,
+                          decoration: const InputDecoration(
+                            labelText: 'Valores, separados por comas',
+                            hintText: '8 cm, 10 cm, 12 cm',
+                          ),
+                          validator: (v) =>
+                              _ChoiceFieldControllers.split(v ?? '').isEmpty
+                              ? 'Añade al menos un valor'
+                              : null,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Quitar opción',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _removeOption(index),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_options.length < maxOptions)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Añadir opción'),
+                    onPressed: _addOption,
+                  ),
+                ),
+              for (final variant in _variants)
                 _VariantEditor(
                   key: ObjectKey(variant),
                   fields: variant,
-                  canRemove: _variants.length > 1,
-                  onRemove: () =>
-                      setState(() => _variants.removeAt(index).dispose()),
                   onChanged: () => setState(() {}),
                 ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => setState(
-                    () => _variants.add(_VariantFields(VariantDraft(name: ''))),
-                  ),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Añadir variante'),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -596,41 +720,67 @@ class _Section extends StatelessWidget {
   }
 }
 
-/// Text controllers for one variant row.
+/// Most options a product can combine, and most variants the API accepts.
+const maxOptions = 3;
+const maxVariants = 100;
+
+/// Text fields of one option: its name and comma-separated values.
+class _OptionControllers {
+  _OptionControllers(
+    VariantOption? option, {
+    required void Function(_OptionControllers) onChanged,
+  }) : name = TextEditingController(text: option?.name ?? ''),
+       values = TextEditingController(text: option?.values.join(', ') ?? ''),
+       lastName = option?.name ?? '',
+       lastValues = option?.values ?? const [] {
+    name.addListener(() => onChanged(this));
+    values.addListener(() => onChanged(this));
+  }
+
+  final TextEditingController name;
+  final TextEditingController values;
+
+  /// Name and values the variants were last arranged with, to spot renames.
+  String lastName;
+  List<String> lastValues;
+
+  List<String> get currentValues => _ChoiceFieldControllers.split(values.text);
+
+  void dispose() {
+    name.dispose();
+    values.dispose();
+  }
+}
+
+/// Text controllers for one variant row; its combination is in
+/// `draft.options`.
 class _VariantFields {
   _VariantFields(this.draft)
-    : name = TextEditingController(
-        text: draft.name == 'Default' ? '' : draft.name,
-      ),
-      sku = TextEditingController(text: draft.sku),
+    : sku = TextEditingController(text: draft.sku),
       price = TextEditingController(
         text: draft.priceCents == null ? '' : centsToInput(draft.priceCents!),
       ),
       stock = TextEditingController(text: draft.stock?.toString() ?? '');
 
   final VariantDraft draft;
-  final TextEditingController name;
   final TextEditingController sku;
   final TextEditingController price;
   final TextEditingController stock;
 
-  VariantDraft toDraft({required String optionName}) {
-    final value = name.text.trim();
-    return VariantDraft(
-      id: draft.id,
-      name: value.isEmpty ? 'Default' : value,
-      sku: sku.text.trim(),
-      options: optionName.isNotEmpty && value.isNotEmpty
-          ? {optionName: value}
-          : {},
-      priceCents: parseCents(price.text),
-      stock: int.tryParse(stock.text.trim()),
-      isActive: draft.isActive,
-    );
-  }
+  /// E.g. "10 cm · Cristal"; empty for a product without options.
+  String get label => draft.options.values.join(' · ');
+
+  VariantDraft toDraft() => VariantDraft(
+    id: draft.id,
+    name: label.isEmpty ? 'Default' : label,
+    sku: sku.text.trim(),
+    options: Map.of(draft.options),
+    priceCents: parseCents(price.text),
+    stock: int.tryParse(stock.text.trim()),
+    isActive: draft.isActive,
+  );
 
   void dispose() {
-    name.dispose();
     sku.dispose();
     price.dispose();
     stock.dispose();
@@ -641,14 +791,10 @@ class _VariantEditor extends StatelessWidget {
   const _VariantEditor({
     super.key,
     required this.fields,
-    required this.canRemove,
-    required this.onRemove,
     required this.onChanged,
   });
 
   final _VariantFields fields;
-  final bool canRemove;
-  final VoidCallback onRemove;
   final VoidCallback onChanged;
 
   @override
@@ -668,18 +814,16 @@ class _VariantEditor extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (fields.label.isNotEmpty) ...[
+              Text(fields.label, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 12),
+            ],
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
-                SizedBox(
-                  width: 180,
-                  child: TextFormField(
-                    controller: fields.name,
-                    decoration: dense('Valor', hint: '2 años'),
-                  ),
-                ),
                 SizedBox(
                   width: 140,
                   child: TextFormField(
@@ -727,13 +871,6 @@ class _VariantEditor extends StatelessWidget {
                   },
                 ),
                 const Text('Activa'),
-                const Spacer(),
-                if (canRemove)
-                  TextButton.icon(
-                    onPressed: onRemove,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Quitar'),
-                  ),
               ],
             ),
           ],

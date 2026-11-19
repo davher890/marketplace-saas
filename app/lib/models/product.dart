@@ -71,9 +71,35 @@ class Product {
   int priceOf(ProductVariant variant) => variant.priceCents ?? basePriceCents;
 
   /// A product with a single "Default" variant has no options to choose.
-  bool get hasOptions =>
-      activeVariants.length > 1 ||
-      activeVariants.any((v) => v.options.isNotEmpty);
+  bool get hasOptions => variantOptions(activeVariants).isNotEmpty;
+
+  /// Active variant matching every value in [selected], if any.
+  ProductVariant? variantFor(Map<String, String> selected) =>
+      activeVariants.where((v) {
+        final options = optionsOf(v, activeVariants);
+        return selected.entries.every((e) => options[e.key] == e.value);
+      }).firstOrNull;
+
+  /// Active variant after the customer picks [value] for [option], keeping as
+  /// many of the other [selected] values as possible.
+  ProductVariant? pick(
+    Map<String, String> selected,
+    String option,
+    String value,
+  ) {
+    final candidates = activeVariants
+        .where((v) => optionsOf(v, activeVariants)[option] == value)
+        .toList();
+    int score(ProductVariant v) {
+      final options = optionsOf(v, activeVariants);
+      return selected.entries.where((e) => options[e.key] == e.value).length *
+              2 +
+          (v.isInStock ? 1 : 0);
+    }
+
+    candidates.sort((a, b) => score(b).compareTo(score(a)));
+    return candidates.firstOrNull;
+  }
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final variants =
@@ -203,4 +229,107 @@ class ProductImage {
     altText: json['alt_text'] as String?,
     position: json['position'] as int? ?? 0,
   );
+}
+
+/// One option customers choose a value of, e.g. "Tamaño": 8 cm, 10 cm.
+typedef VariantOption = ({String name, List<String> values});
+
+/// Name used for products whose variants were saved without options.
+const defaultOptionName = 'Opción';
+
+/// Value used for a variant that lacks an option the others have.
+const defaultOptionValue = 'Estándar';
+
+/// Options of [variants] in order of appearance, e.g. Tamaño then Material.
+///
+/// Variants saved before options could be combined may lack them: a product
+/// with several variants and no options gets one [defaultOptionName] option
+/// with their names, and a variant missing an option takes its own name.
+List<VariantOption> variantOptions(List<ProductVariant> variants) {
+  final values = <String, List<String>>{};
+  for (final variant in variants) {
+    optionsOf(variant, variants).forEach((name, value) {
+      final list = values.putIfAbsent(name, () => []);
+      if (!list.contains(value)) list.add(value);
+    });
+  }
+  return [for (final e in values.entries) (name: e.key, values: e.value)];
+}
+
+/// [variant]'s value for every option of [variants] (see [variantOptions]).
+Map<String, String> optionsOf(
+  ProductVariant variant,
+  List<ProductVariant> variants,
+) {
+  final names = <String>{for (final v in variants) ...v.options.keys};
+  if (names.isEmpty) {
+    return variants.length > 1
+        ? {defaultOptionName: _ownValue(variant)}
+        : const {};
+  }
+  return {
+    for (final name in names) name: variant.options[name] ?? _ownValue(variant),
+  };
+}
+
+String _ownValue(ProductVariant variant) =>
+    variant.name == 'Default' || variant.name.trim().isEmpty
+    ? defaultOptionValue
+    : variant.name;
+
+/// Every combination of the options' values; the first option changes
+/// slowest, e.g. 8 cm · Cristal, 8 cm · Madera, 10 cm · Cristal...
+List<Map<String, String>> optionCombinations(List<VariantOption> options) {
+  var combinations = [<String, String>{}];
+  for (final option in options) {
+    if (option.values.isEmpty) continue;
+    combinations = [
+      for (final combination in combinations)
+        for (final value in option.values) {...combination, option.name: value},
+    ];
+  }
+  return options.any((o) => o.values.isNotEmpty) ? combinations : [];
+}
+
+/// For each combination, the index in [rows] of the variant to keep for it,
+/// or `null` for a new one. A row with exactly those values wins; otherwise
+/// an unclaimed row that agrees on every option both have (e.g. an option was
+/// just added or removed), preferring the one sharing most values.
+List<int?> matchCombinations(
+  List<Map<String, String>> combinations,
+  List<Map<String, String>> rows,
+) {
+  bool same(Map<String, String> a, Map<String, String> b) =>
+      a.length == b.length && a.entries.every((e) => b[e.key] == e.value);
+
+  final claimed = <int>{};
+  final result = List<int?>.filled(combinations.length, null);
+  for (final (i, combination) in combinations.indexed) {
+    for (final (j, row) in rows.indexed) {
+      if (!claimed.contains(j) && same(combination, row)) {
+        result[i] = j;
+        claimed.add(j);
+        break;
+      }
+    }
+  }
+  for (final (i, combination) in combinations.indexed) {
+    if (result[i] != null) continue;
+    int? best;
+    var bestShared = -1;
+    for (final (j, row) in rows.indexed) {
+      if (claimed.contains(j)) continue;
+      final shared = combination.keys.where(row.containsKey);
+      if (shared.any((key) => row[key] != combination[key])) continue;
+      if (shared.length > bestShared) {
+        best = j;
+        bestShared = shared.length;
+      }
+    }
+    if (best != null) {
+      result[i] = best;
+      claimed.add(best);
+    }
+  }
+  return result;
 }

@@ -172,28 +172,19 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
           style: textTheme.titleLarge?.copyWith(color: AppColors.chocolate),
         ),
         const SizedBox(height: 24),
-        if (product.hasOptions) ...[
-          Text('Opciones', style: textTheme.titleSmall),
+        for (final option in variantOptions(product.activeVariants)) ...[
+          Text(option.name, style: textTheme.titleSmall),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final v in product.activeVariants)
-                ChoiceChip(
-                  label: Text(v.isInStock ? v.label : '${v.label} (agotado)'),
-                  selected: v.id == variant?.id,
-                  labelStyle: TextStyle(
-                    color: v.id == variant?.id
-                        ? AppColors.cream
-                        : AppColors.ink,
-                  ),
-                  onSelected: (_) => setState(() {
-                    _variant = v;
-                    _quantity = 1;
-                  }),
-                ),
-            ],
+          _OptionValues(
+            product: product,
+            option: option,
+            selected: variant == null
+                ? const {}
+                : optionsOf(variant, product.activeVariants),
+            onPicked: (picked) => setState(() {
+              _variant = picked;
+              _quantity = 1;
+            }),
           ),
           const SizedBox(height: 24),
         ],
@@ -352,6 +343,54 @@ class _QuantityStepper extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// One row of values for an option; the selected one is highlighted and
+/// values whose variant is sold out say so.
+class _OptionValues extends StatelessWidget {
+  const _OptionValues({
+    required this.product,
+    required this.option,
+    required this.selected,
+    required this.onPicked,
+  });
+
+  final Product product;
+  final VariantOption option;
+  final Map<String, String> selected;
+  final ValueChanged<ProductVariant> onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final value in option.values)
+          Builder(
+            builder: (context) {
+              final isSelected = selected[option.name] == value;
+              final variant = product.variantFor({
+                ...selected,
+                option.name: value,
+              });
+              final soldOut = variant != null && !variant.isInStock;
+              return ChoiceChip(
+                label: Text(soldOut ? '$value (agotado)' : value),
+                selected: isSelected,
+                labelStyle: TextStyle(
+                  color: isSelected ? AppColors.cream : AppColors.ink,
+                ),
+                onSelected: (_) {
+                  final picked = product.pick(selected, option.name, value);
+                  if (picked != null) onPicked(picked);
+                },
+              );
+            },
+          ),
+      ],
     );
   }
 }
