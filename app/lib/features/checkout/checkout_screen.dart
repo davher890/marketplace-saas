@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -214,12 +215,26 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: field(
-                            _postalCode,
-                            'Código postal',
-                            required: true,
-                            keyboard: TextInputType.number,
-                            autofill: const [AutofillHints.postalCode],
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: TextFormField(
+                              controller: _postalCode,
+                              decoration: const InputDecoration(
+                                labelText: 'Código postal *',
+                                hintText: '28010',
+                              ),
+                              validator: (v) => (v ?? '').trim().isEmpty
+                                  ? 'Obligatorio'
+                                  : isSpanishPostalCode(v)
+                                  ? null
+                                  : 'Código postal no válido',
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(5),
+                              ],
+                              autofillHints: const [AutofillHints.postalCode],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),

@@ -55,6 +55,12 @@ class ShopSettings {
   };
 }
 
+/// Spanish postal code: five digits, the first two the province (01-52),
+/// e.g. 28010. Mirrors `isSpanishPostalCode` in the API.
+bool isSpanishPostalCode(String? postalCode) => RegExp(
+  r'^(0[1-9]|[1-4]\d|5[0-2])\d{3}$',
+).hasMatch((postalCode ?? '').replaceAll(' ', ''));
+
 /// Postal codes of the Madrid province start with 28 (28001-28999).
 bool isMadridPostalCode(String? postalCode) =>
     RegExp(r'^28\d{3}$').hasMatch((postalCode ?? '').replaceAll(' ', ''));

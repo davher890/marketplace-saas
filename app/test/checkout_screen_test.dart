@@ -121,4 +121,31 @@ void main() {
     expect(orders.single['delivery_method'], 'pickup');
     expect(orders.single.containsKey('shipping_address'), isFalse);
   });
+
+  testWidgets('only Spanish postal codes are accepted', (tester) async {
+    await pumpCheckout(tester);
+    await tester.enterText(field('Nombre y apellidos *'), 'Ana');
+    await tester.enterText(field('Dirección *'), 'Calle Mayor 1');
+    await tester.enterText(field('Ciudad *'), 'Madrid');
+
+    await tester.enterText(field('Código postal *'), '53001');
+    await tester.tap(find.text('Realizar pedido'));
+    await tester.pumpAndSettle();
+    expect(find.text('Código postal no válido'), findsOneWidget);
+    expect(orders, isEmpty);
+
+    // Letters and a sixth digit are not even typed.
+    await tester.enterText(field('Código postal *'), '');
+    await tester.enterText(field('Código postal *'), '28a0101');
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextFormField>(field('Código postal *')).controller!.text,
+      '28010',
+    );
+
+    await tester.tap(find.text('Realizar pedido'));
+    await tester.pumpAndSettle();
+    expect(find.text('Código postal no válido'), findsNothing);
+    expect(orders.single['shipping_address']['postal_code'], '28010');
+  });
 }

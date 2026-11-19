@@ -6,7 +6,7 @@ import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
 import { sendStatusChangeEmail } from './orderEmails';
-import { DELIVERY_METHODS, getSettings, shippingFor } from './settings';
+import { DELIVERY_METHODS, getSettings, isSpanishPostalCode, shippingFor } from './settings';
 
 export const ORDER_STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -72,7 +72,10 @@ const addressSchema = z.object({
   line1: text(200).min(1, 'Address is required'),
   line2: text(200).default(''),
   city: text(100).min(1, 'City is required'),
-  postal_code: text(20).min(1, 'Postal code is required'),
+  postal_code: text(20)
+    .min(1, 'Postal code is required')
+    .transform((value) => value.replace(/\s/g, ''))
+    .refine(isSpanishPostalCode, 'Postal code must be a Spanish one, e.g. 28010'),
   province: text(100).default(''),
   country: text(2).default('ES'),
 });

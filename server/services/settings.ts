@@ -33,6 +33,14 @@ export async function getSettings(): Promise<ShopSettings> {
 export const DELIVERY_METHODS = ['shipping', 'pickup'] as const;
 export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
 
+/**
+ * Spanish postal code: five digits, the first two the province (01-52),
+ * e.g. 28010. Spaces are ignored.
+ */
+export function isSpanishPostalCode(postalCode: string | null | undefined): boolean {
+  return /^(0[1-9]|[1-4]\d|5[0-2])\d{3}$/.test((postalCode ?? '').replace(/\s/g, ''));
+}
+
 /** Spanish postal codes of the Madrid province start with 28 (28001-28999). */
 export function isMadridPostalCode(postalCode: string | null | undefined): boolean {
   return /^28\d{3}$/.test((postalCode ?? '').replace(/\s/g, ''));

@@ -163,6 +163,12 @@ void main() {
     expect(isMadridPostalCode('28 001'), isTrue);
     expect(isMadridPostalCode('2800'), isFalse);
     expect(isMadridPostalCode('128001'), isFalse);
+    for (final valid in ['28010', '01001', '08 001', '52006']) {
+      expect(isSpanishPostalCode(valid), isTrue, reason: valid);
+    }
+    for (final invalid in ['00123', '53001', '2801', '280100', 'abcde', '']) {
+      expect(isSpanishPostalCode(invalid), isFalse, reason: invalid);
+    }
     expect(
       shippingRatesText(settings),
       'Madrid ${formatCents(500)} · Resto de España ${formatCents(600)} · '
