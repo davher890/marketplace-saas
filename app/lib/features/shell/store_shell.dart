@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../models/category.dart';
 import '../../repositories/cart_repository.dart';
 import '../../repositories/catalog_repository.dart';
+import '../../widgets/common.dart';
 
 /// Layout shared by every storefront page: header with the wordmark,
 /// category menu, cart / account actions and the footer.
@@ -123,8 +124,8 @@ class _CategoryMenuBar extends StatelessWidget {
   }
 }
 
-/// Tab-like button that mimics the site's menu: white, rounded, dark green
-/// when the category or one of its sub-categories is open.
+/// Header menu entry, selected when the category or one of its
+/// sub-categories is open.
 class _CategoryMenuButton extends StatelessWidget {
   const _CategoryMenuButton({required this.node, required this.currentPath});
 
@@ -135,23 +136,14 @@ class _CategoryMenuButton extends StatelessWidget {
       currentPath == '/c/${node.category.slug}' ||
       node.children.any((c) => currentPath == '/c/${c.slug}');
 
+  // Goes straight to the category, which lists its sub-categories' products
+  // too and shows the sub-categories as buttons to narrow down.
   @override
-  Widget build(BuildContext context) {
-    final style = FilledButton.styleFrom(
-      backgroundColor: _isSelected ? AppColors.forest : AppColors.surface,
-      foregroundColor: _isSelected ? AppColors.cream : AppColors.ink,
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-      elevation: 1,
-    );
-
-    // Goes straight to the category, which lists its sub-categories' products
-    // too and shows the sub-categories as chips to narrow down.
-    return FilledButton(
-      style: style,
-      onPressed: () => context.go('/c/${node.category.slug}'),
-      child: Text(node.category.name),
-    );
-  }
+  Widget build(BuildContext context) => CategoryTabButton(
+    label: node.category.name,
+    selected: _isSelected,
+    onPressed: () => context.go('/c/${node.category.slug}'),
+  );
 }
 
 class _CategoryDrawer extends StatelessWidget {

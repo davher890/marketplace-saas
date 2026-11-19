@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/category.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
 import 'product_card.dart';
@@ -22,11 +23,14 @@ class CategoryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoriesProvider).value ?? const [];
     final category = categories.where((c) => c.slug == slug).firstOrNull;
-    final children = category == null
-        ? const []
-        : categories
-              .where((c) => c.parentId == category.id && c.isActive)
-              .toList();
+    // On a main category or one of its sub-categories, the same row of
+    // buttons: "Todo" for the main category, then each sub-category.
+    final root = category == null || category.isRoot
+        ? category
+        : categories.where((c) => c.id == category.parentId).firstOrNull;
+    final subcategories = root == null
+        ? const <Category>[]
+        : categories.where((c) => c.parentId == root.id && c.isActive).toList();
     final key = (slug: slug, sort: sort);
     final products = ref.watch(categoryProductsProvider(key));
 
@@ -40,7 +44,7 @@ class CategoryScreen extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 16),
               child: Text(category!.description!, textAlign: TextAlign.center),
             ),
-          if (children.isNotEmpty)
+          if (root != null && subcategories.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: Wrap(
@@ -48,10 +52,16 @@ class CategoryScreen extends ConsumerWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final child in children)
-                    ActionChip(
-                      label: Text(child.name),
-                      onPressed: () => context.go('/c/${child.slug}'),
+                  CategoryTabButton(
+                    label: 'Todo',
+                    selected: category == root,
+                    onPressed: () => context.go('/c/${root.slug}'),
+                  ),
+                  for (final sub in subcategories)
+                    CategoryTabButton(
+                      label: sub.name,
+                      selected: sub.slug == slug,
+                      onPressed: () => context.go('/c/${sub.slug}'),
                     ),
                 ],
               ),

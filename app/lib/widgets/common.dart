@@ -201,3 +201,33 @@ class SectionTitle extends StatelessWidget {
     );
   }
 }
+
+/// Tab-like button that mimics the site's menu: white and rounded, dark green
+/// when [selected]. Used for categories in the header and for sub-categories
+/// on a category page.
+class CategoryTabButton extends StatelessWidget {
+  const CategoryTabButton({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      style: FilledButton.styleFrom(
+        backgroundColor: selected ? AppColors.forest : AppColors.surface,
+        foregroundColor: selected ? AppColors.cream : AppColors.ink,
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+        elevation: 1,
+      ),
+      onPressed: onPressed,
+      child: Text(label),
+    );
+  }
+}
