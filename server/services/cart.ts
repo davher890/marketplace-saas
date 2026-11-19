@@ -132,7 +132,6 @@ export interface ChoiceField {
 interface PurchasableVariant {
   id: string;
   is_active: boolean;
-  stock: number | null;
   products: {
     name: string;
     is_customizable: boolean;
@@ -148,22 +147,12 @@ async function findVariant(user: AuthUser, variantId: string): Promise<Available
   const variant = unwrap(
     await user.db
       .from('product_variants')
-      .select('id, is_active, stock, products(name, is_customizable, is_active, choice_fields)')
+      .select('id, is_active, products(name, is_customizable, is_active, choice_fields)')
       .eq('id', variantId)
       .maybeSingle(),
   ) as PurchasableVariant | null;
   if (!variant?.is_active || !variant.products?.is_active) throw notFound('Product not available');
   return variant as AvailableVariant;
-}
-
-function assertStock(variant: AvailableVariant, quantity: number): void {
-  if (variant.stock !== null && quantity > variant.stock) {
-    throw conflict(
-      variant.stock === 0
-        ? `"${variant.products.name}" is sold out`
-        : `Only ${variant.stock} left of "${variant.products.name}"`,
-    );
-  }
 }
 
 export const addItemSchema = z.object({
@@ -214,8 +203,8 @@ export async function addItem(user: AuthUser, input: z.infer<typeof addItemSchem
       .maybeSingle(),
   ) as { quantity: number } | null;
 
+  // Stock isn't tracked: any quantity up to the line limit can be ordered.
   const quantity = Math.min((existing?.quantity ?? 0) + input.quantity, MAX_LINE_QUANTITY);
-  assertStock(variant, quantity);
 
   const { error } = await user.db.from('cart_items').upsert(
     { cart_id: cartId, variant_id: variant.id, customization, quantity, updated_at: now() },
@@ -238,7 +227,7 @@ export async function updateItem(user: AuthUser, itemId: string, quantity: numbe
   ) as { variant_id: string } | null;
   if (!item) throw notFound('Cart item not found');
 
-  assertStock(await findVariant(user, item.variant_id), quantity);
+  await findVariant(user, item.variant_id); // still active?
   check((await user.db.from('cart_items').update({ quantity, updated_at: now() }).eq('id', itemId)).error);
   return getCart(user);
 }

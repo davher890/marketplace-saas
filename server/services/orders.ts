@@ -7,7 +7,6 @@ import { check, now, supabaseAdmin, unwrap } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
 import { sendStatusChangeEmail } from './orderEmails';
 import { getSettings, shippingFor } from './settings';
-import { releaseStock, reserveStock } from './stock';
 
 export const ORDER_STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -88,33 +87,13 @@ export const checkoutSchema = z.object({
  * Turns the user's cart into an order.
  *
  * Prices come from the catalog (read with the user's client), never from the
- * request. Without database transactions the steps run in an order that can
- * be undone: stock is reserved first (compare-and-swap, see stock.ts), then
- * the order is written with the service-role client; if writing fails the
- * order is deleted and the stock given back.
+ * request. Stock isn't tracked, so nothing is reserved. Without database
+ * transactions, if writing the lines fails the order is deleted again.
  */
 export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutSchema>): Promise<Order> {
   const { lines, removed } = await loadCartLines(user);
   if (removed > 0) throw conflict('Some products in your cart are no longer available. Please review it.');
   if (lines.length === 0) throw conflict('Cart is empty');
-
-  // The same variant can be on several lines (different customizations), so
-  // stock is checked against the total quantity per variant.
-  const quantityByVariant = new Map<string, number>();
-  for (const line of lines) {
-    const id = line.product_variants.id;
-    quantityByVariant.set(id, (quantityByVariant.get(id) ?? 0) + line.quantity);
-  }
-  const tracked = new Map(
-    [...quantityByVariant].filter(([id]) => {
-      const line = lines.find((l) => l.product_variants.id === id)!;
-      return line.product_variants.stock !== null;
-    }),
-  );
-
-  if (!(await reserveStock(tracked))) {
-    throw conflict('Not enough stock for some products in your cart. Please review it.');
-  }
 
   const subtotal = lines.reduce((sum, line) => sum + line.unit_price_cents * line.quantity, 0);
   const shipping = shippingFor(await getSettings(), subtotal);
@@ -162,9 +141,8 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
 
     await recordStatusChange(order.id, null, 'pending', user.id);
   } catch (error) {
-    // Undo what was done so far: the order (its lines cascade) and the stock.
+    // Undo what was done so far: the order (its lines cascade).
     if (orderId) await admin.from('orders').delete().eq('id', orderId);
-    await releaseStock(tracked);
     throw error;
   }
 
@@ -195,19 +173,10 @@ async function recordStatusChange(
   );
 }
 
-/** Units per variant on an order, to give back when it's cancelled. */
-function orderQuantities(order: Order): Map<string, number> {
-  const quantities = new Map<string, number>();
-  for (const item of order.order_items ?? []) {
-    if (item.variant_id) quantities.set(item.variant_id, (quantities.get(item.variant_id) ?? 0) + item.quantity);
-  }
-  return quantities;
-}
-
 /**
  * Moves an order to a new status. The update only applies if the order still
  * has the status we read (compare-and-swap), so two simultaneous changes
- * can't both win, and a cancellation can't give stock back twice.
+ * can't both win.
  */
 async function transition(order: Order, to: OrderStatus, actorId: string): Promise<boolean> {
   if (order.status === to) return false;
@@ -228,7 +197,6 @@ async function transition(order: Order, to: OrderStatus, actorId: string): Promi
   if (updated.length === 0) throw conflict('The order was changed by someone else. Reload and try again.');
 
   await recordStatusChange(order.id, order.status, to, actorId);
-  if (to === 'cancelled') await releaseStock(orderQuantities(order));
   return true;
 }
 

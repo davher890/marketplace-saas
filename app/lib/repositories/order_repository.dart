@@ -34,7 +34,7 @@ class OrderRepository {
 
   final ApiClient _api;
 
-  /// Prices, stock and shipping are computed by the API, never by the app.
+  /// Prices and shipping are computed by the API, never by the app.
   Future<Order> checkout(CheckoutRequest request) async {
     final json = await _api.post('/api/checkout', request.toJson());
     return Order.fromJson((json as Map<String, dynamic>)['order']);
@@ -66,7 +66,7 @@ class OrderRepository {
   Future<Order> cancel(String orderId) async =>
       Order.fromJson(await _api.post('/api/orders/$orderId/cancel'));
 
-  /// Admin only. Cancelling also restores stock.
+  /// Admin only.
   Future<Order> updateStatus(String orderId, OrderStatus status) async =>
       Order.fromJson(
         await _api.patch('/api/admin/orders/$orderId', {'status': status.name}),

@@ -164,12 +164,6 @@ class _ProductRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final trackedStock = product.variants
-        .where((v) => v.tracksStock)
-        .fold<int>(0, (sum, v) => sum + v.stock!);
-    final tracksStock = product.variants.any((v) => v.tracksStock);
-    final stockLabel = tracksStock ? 'Stock: $trackedStock' : 'Por encargo';
-
     return Card(
       child: ListTile(
         onTap: () => context.go('/admin/products/${product.id}'),
@@ -183,7 +177,7 @@ class _ProductRow extends ConsumerWidget {
         title: Text(product.name),
         subtitle: Text(
           '$categoryName · ${formatCents(product.minPriceCents)} · '
-          '${product.variants.length} variante${product.variants.length == 1 ? '' : 's'} · $stockLabel',
+          '${product.variants.length} variante${product.variants.length == 1 ? '' : 's'}',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

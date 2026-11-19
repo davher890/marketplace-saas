@@ -130,7 +130,7 @@ class _CartLine extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(cartProvider.notifier);
-    final maxQuantity = item.variant.stock ?? 99;
+    const maxQuantity = 99; // stock isn't tracked
 
     Future<void> run(Future<void> Function() action) async {
       try {
