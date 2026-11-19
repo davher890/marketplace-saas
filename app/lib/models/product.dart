@@ -92,9 +92,7 @@ class Product {
         .toList();
     int score(ProductVariant v) {
       final options = optionsOf(v, activeVariants);
-      return selected.entries.where((e) => options[e.key] == e.value).length *
-              2 +
-          (v.isInStock ? 1 : 0);
+      return selected.entries.where((e) => options[e.key] == e.value).length;
     }
 
     candidates.sort((a, b) => score(b).compareTo(score(a)));

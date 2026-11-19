@@ -85,9 +85,18 @@ void main() {
     expect(find.text('Hecho por encargo'), findsNothing);
   });
 
-  testWidgets('made-to-order products still say so', (tester) async {
-    await pumpProduct(tester, _product(stock: null));
-    expect(find.text('Hecho por encargo'), findsOneWidget);
+  testWidgets('stock is ignored: sold out can still be added', (tester) async {
+    await pumpProduct(tester, _product(stock: 0, customizable: false));
+    expect(find.text('Agotado'), findsNothing);
+    expect(find.text('Hecho por encargo'), findsNothing);
+
+    await tester.tap(find.byType(DropdownMenu<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rojo').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Añadir al carrito'));
+    await tester.pumpAndSettle();
+    expect(cartBodies.single['variant_id'], 'v1');
   });
 
   testWidgets('a choice must be picked, then it goes to the cart', (
@@ -143,7 +152,7 @@ void main() {
 
     expect(find.text('Tamaño'), findsOneWidget);
     expect(find.text('Material'), findsOneWidget);
-    expect(find.text('Madera (agotado)'), findsOneWidget);
+    expect(find.textContaining('agotado'), findsNothing);
 
     await tester.tap(find.text('10 cm'));
     await tester.pumpAndSettle();

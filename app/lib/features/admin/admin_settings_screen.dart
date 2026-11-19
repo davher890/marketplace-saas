@@ -34,6 +34,11 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
   late final _shipping = TextEditingController(
     text: centsToInput(widget.settings.shippingFlatCents),
   );
+  late final _madrid = TextEditingController(
+    text: widget.settings.shippingMadridCents == null
+        ? ''
+        : centsToInput(widget.settings.shippingMadridCents!),
+  );
   late final _threshold = TextEditingController(
     text: widget.settings.freeShippingThresholdCents == null
         ? ''
@@ -49,7 +54,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
 
   @override
   void dispose() {
-    for (final c in [_shipping, _threshold, _email, _phone]) {
+    for (final c in [_shipping, _madrid, _threshold, _email, _phone]) {
       c.dispose();
     }
     super.dispose();
@@ -64,6 +69,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
           .saveSettings(
             ShopSettings(
               shippingFlatCents: parseCents(_shipping.text)!,
+              shippingMadridCents: parseCents(_madrid.text),
               freeShippingThresholdCents: parseCents(_threshold.text),
               contactEmail: _email.text.trim().isEmpty
                   ? null
@@ -96,10 +102,27 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
           const SizedBox(height: 16),
           TextFormField(
             controller: _shipping,
-            decoration: const InputDecoration(labelText: 'Coste de envío (€)'),
+            decoration: const InputDecoration(
+              labelText: 'Envío (€)',
+              helperText: 'Resto de España',
+            ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             validator: (v) =>
                 parseCents(v ?? '') == null ? 'Importe no válido' : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _madrid,
+            decoration: const InputDecoration(
+              labelText: 'Envío en Madrid (€)',
+              helperText:
+                  'Códigos postales que empiezan por 28. Vacío: el envío normal',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            validator: (v) =>
+                (v ?? '').trim().isNotEmpty && parseCents(v!) == null
+                ? 'Importe no válido'
+                : null,
           ),
           const SizedBox(height: 12),
           TextFormField(

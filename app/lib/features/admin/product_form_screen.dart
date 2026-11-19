@@ -93,7 +93,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   late bool _isCustomizable = _p?.isCustomizable ?? false;
 
   /// Every variant row created while editing, saved or not, so a value typed
-  /// again gets its SKU, price and stock back. Only [_variants] are saved.
+  /// again gets its SKU and price back. Only [_variants] are saved.
   late final List<_VariantFields> _allVariants = [
     for (final v in _p?.variants ?? const <ProductVariant>[])
       _VariantFields(
@@ -170,7 +170,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     return row;
   }
 
-  /// Renames carry the variants' SKU, price and stock over to the new name.
+  /// Renames carry the variants' SKU and price over to the new name.
   void _onOptionChanged(_OptionControllers option) {
     final name = option.name.text.trim();
     final values = option.currentValues;
@@ -528,7 +528,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
             children: [
               const Text(
                 'Listas de las que el cliente elige un valor, p. ej. el color '
-                'del lazo. No cambian el precio ni el stock: para eso, usa '
+                'del lazo. No cambian el precio: para eso, usa '
                 'variantes.',
               ),
               for (final (index, field) in _choiceFields.indexed)
@@ -593,7 +593,7 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
             title: 'Variantes',
             children: [
               const Text(
-                'Opciones que cambian el precio o el stock, p. ej. tamaño y '
+                'Opciones que cambian el precio, p. ej. tamaño y '
                 'material. Se crea una variante por cada combinación de '
                 'valores; desactiva las que no vendas.',
               ),
@@ -759,13 +759,11 @@ class _VariantFields {
     : sku = TextEditingController(text: draft.sku),
       price = TextEditingController(
         text: draft.priceCents == null ? '' : centsToInput(draft.priceCents!),
-      ),
-      stock = TextEditingController(text: draft.stock?.toString() ?? '');
+      );
 
   final VariantDraft draft;
   final TextEditingController sku;
   final TextEditingController price;
-  final TextEditingController stock;
 
   /// E.g. "10 cm · Cristal"; empty for a product without options.
   String get label => draft.options.values.join(' · ');
@@ -776,14 +774,14 @@ class _VariantFields {
     sku: sku.text.trim(),
     options: Map.of(draft.options),
     priceCents: parseCents(price.text),
-    stock: int.tryParse(stock.text.trim()),
+    // Stock is hidden for now: whatever was stored is kept as is.
+    stock: draft.stock,
     isActive: draft.isActive,
   );
 
   void dispose() {
     sku.dispose();
     price.dispose();
-    stock.dispose();
   }
 }
 
@@ -843,20 +841,6 @@ class _VariantEditor extends StatelessWidget {
                         (v ?? '').trim().isNotEmpty && parseCents(v!) == null
                         ? 'No válido'
                         : null,
-                  ),
-                ),
-                SizedBox(
-                  width: 140,
-                  child: TextFormField(
-                    controller: fields.stock,
-                    decoration: dense('Stock', hint: 'Por encargo'),
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      final text = (v ?? '').trim();
-                      if (text.isEmpty) return null;
-                      final n = int.tryParse(text);
-                      return n == null || n < 0 ? 'No válido' : null;
-                    },
                   ),
                 ),
               ],

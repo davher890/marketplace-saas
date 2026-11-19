@@ -131,7 +131,7 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: Text('¿Cancelar el pedido #${order.orderNumber}?'),
-          content: const Text('Se devolverá el stock de los productos.'),
+          content: const Text('Un pedido cancelado ya no se puede reabrir.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -215,7 +215,7 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
                                   ? AppColors.cream
                                   : AppColors.ink,
                             ),
-                            // A cancelled order has had its stock restored; keep it final.
+                            // Cancelled orders are final.
                             onSelected: _saving || isCancelled
                                 ? null
                                 : (_) => _changeStatus(order, status),

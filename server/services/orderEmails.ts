@@ -24,6 +24,8 @@ interface OrderDetails {
   id: string;
   order_number: number;
   contact_email: string | null;
+  /** Missing on orders read before the column existed: shipping. */
+  delivery_method?: 'shipping' | 'pickup';
   shipping_name: string;
   shipping_phone: string | null;
   shipping_address: {
@@ -63,7 +65,25 @@ function siteLink(path: string): string | null {
 // Building blocks
 // -----------------------------------------------------------------------------
 
+const isPickup = (order: OrderDetails) => order.delivery_method === 'pickup';
+
+/** Heading of the delivery block: where it's sent, or that it's picked up. */
+function deliveryTitle(order: OrderDetails, shippingTitle: string): string {
+  return isPickup(order) ? 'Recogida en tienda' : shippingTitle;
+}
+
+/** Shipping line of the totals. */
+function shippingLabel(order: OrderDetails): string {
+  if (isPickup(order)) return 'Recogida en tienda (gratis)';
+  return order.shipping_cents === 0 ? 'Envío (gratis)' : 'Envío';
+}
+
 function addressLines(order: OrderDetails): string[] {
+  if (isPickup(order)) {
+    return [order.shipping_name, order.shipping_phone ? `Tel. ${order.shipping_phone}` : null].filter(
+      (line): line is string => Boolean(line),
+    );
+  }
   const a = order.shipping_address;
   return [
     order.shipping_name,
@@ -94,7 +114,7 @@ function itemsHtml(order: OrderDetails): string {
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0">
     ${rows}
     ${total('Subtotal', order.subtotal_cents)}
-    ${total(order.shipping_cents === 0 ? 'Envío (gratis)' : 'Envío', order.shipping_cents)}
+    ${total(shippingLabel(order), order.shipping_cents)}
     ${total('Total', order.total_cents, true)}
   </table>`;
 }
@@ -108,7 +128,9 @@ function itemsText(order: OrderDetails): string {
   return [
     ...lines,
     `Subtotal: ${money(order.subtotal_cents)}`,
-    `Envío: ${order.shipping_cents === 0 ? 'gratis' : money(order.shipping_cents)}`,
+    isPickup(order)
+      ? 'Envío: recogida en tienda (gratis)'
+      : `Envío: ${order.shipping_cents === 0 ? 'gratis' : money(order.shipping_cents)}`,
     `Total: ${money(order.total_cents)}`,
   ].join('\n');
 }
@@ -171,7 +193,9 @@ export function newOrderAdminEmail(order: OrderDetails) {
     `Nuevo pedido #${order.order_number}`,
     paragraph(`<strong>${escapeHtml(order.shipping_name)}</strong>${contact ? `<br>${contact}` : ''}`) +
       itemsHtml(order) +
-      paragraph(`<strong>Envío a</strong><br>${addressLines(order).map(escapeHtml).join('<br>')}`) +
+      paragraph(
+        `<strong>${deliveryTitle(order, 'Envío a')}</strong><br>${addressLines(order).map(escapeHtml).join('<br>')}`,
+      ) +
       (order.customer_notes ? paragraph(`<strong>Notas del cliente</strong><br>${escapeHtml(order.customer_notes)}`) : ''),
     { label: 'Abrir en la administración', url: siteLink(`/admin/orders/${order.id}`) },
   );
@@ -181,7 +205,7 @@ export function newOrderAdminEmail(order: OrderDetails) {
     '',
     itemsText(order),
     '',
-    `Envío a:\n${addressLines(order).join('\n')}`,
+    `${deliveryTitle(order, 'Envío a')}:\n${addressLines(order).join('\n')}`,
     order.customer_notes ? `\nNotas del cliente:\n${order.customer_notes}` : '',
     siteLink(`/admin/orders/${order.id}`) ?? '',
   ].join('\n');
@@ -197,7 +221,9 @@ export function orderReceivedEmail(order: OrderDetails) {
         `Hemos recibido tu pedido <strong>#${order.order_number}</strong>. Te contactaremos para confirmar el pago y los detalles de la personalización.`,
       ) +
       itemsHtml(order) +
-      paragraph(`<strong>Dirección de envío</strong><br>${addressLines(order).map(escapeHtml).join('<br>')}`) +
+      paragraph(
+        `<strong>${deliveryTitle(order, 'Dirección de envío')}</strong><br>${addressLines(order).map(escapeHtml).join('<br>')}`,
+      ) +
       paragraph('Si tienes cualquier duda, responde a este email.'),
     { label: 'Ver mi pedido', url: siteLink(`/orders/${order.id}`) },
   );
@@ -208,7 +234,7 @@ export function orderReceivedEmail(order: OrderDetails) {
     '',
     itemsText(order),
     '',
-    `Dirección de envío:\n${addressLines(order).join('\n')}`,
+    `${deliveryTitle(order, 'Dirección de envío')}:\n${addressLines(order).join('\n')}`,
     '',
     'Si tienes cualquier duda, responde a este email.',
     siteLink(`/orders/${order.id}`) ?? '',

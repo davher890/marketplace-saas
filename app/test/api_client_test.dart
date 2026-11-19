@@ -140,4 +140,36 @@ void main() {
     expect(order.status, OrderStatus.pending);
     expect(order.history.single.toStatus, OrderStatus.pending);
   });
+
+  test('pickup orders send no address and read back as pickup', () async {
+    late http.Request sent;
+    final api = clientReturning(201, {
+      'order': {
+        'id': 'o2',
+        'order_number': 1001,
+        'status': 'pending',
+        'subtotal_cents': 2400,
+        'shipping_cents': 0,
+        'total_cents': 2400,
+        'delivery_method': 'pickup',
+        'shipping_name': 'Ana',
+        'shipping_address': {},
+        'created_at': '2026-11-04T16:00:00.000Z',
+        'order_items': [],
+        'order_status_history': [],
+      },
+    }, onRequest: (r) => sent = r);
+
+    final order = await OrderRepository(api).checkout(
+      const CheckoutRequest(
+        shippingName: 'Ana',
+        deliveryMethod: DeliveryMethod.pickup,
+      ),
+    );
+
+    final body = jsonDecode(sent.body) as Map<String, dynamic>;
+    expect(body['delivery_method'], 'pickup');
+    expect(body.containsKey('shipping_address'), isFalse);
+    expect(order.isPickup, isTrue);
+  });
 }

@@ -6,8 +6,7 @@ import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
 import { sendStatusChangeEmail } from './orderEmails';
-import { getSettings, shippingFor } from './settings';
-import { releaseStock, reserveStock } from './stock';
+import { DELIVERY_METHODS, getSettings, isSpanishPostalCode, shippingFor } from './settings';
 
 export const ORDER_STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -69,55 +68,52 @@ export async function getOrderFor(user: AuthUser, orderId: string, admin: boolea
 
 const text = (max: number) => z.string().trim().max(max);
 
-export const checkoutSchema = z.object({
-  shipping_name: text(120).min(1, 'Shipping name is required'),
-  shipping_phone: text(40).nullish(),
-  contact_email: z.email().max(200).nullish(),
-  customer_notes: text(1000).nullish(),
-  shipping_address: z.object({
-    line1: text(200).min(1, 'Address is required'),
-    line2: text(200).default(''),
-    city: text(100).min(1, 'City is required'),
-    postal_code: text(20).min(1, 'Postal code is required'),
-    province: text(100).default(''),
-    country: text(2).default('ES'),
-  }),
+const addressSchema = z.object({
+  line1: text(200).min(1, 'Address is required'),
+  line2: text(200).default(''),
+  city: text(100).min(1, 'City is required'),
+  postal_code: text(20)
+    .min(1, 'Postal code is required')
+    .transform((value) => value.replace(/\s/g, ''))
+    .refine(isSpanishPostalCode, 'Postal code must be a Spanish one, e.g. 28010'),
+  province: text(100).default(''),
+  country: text(2).default('ES'),
 });
+
+export const checkoutSchema = z
+  .object({
+    /** 'pickup': collected in the shop, free shipping and no address. */
+    delivery_method: z.enum(DELIVERY_METHODS).default('shipping'),
+    shipping_name: text(120).min(1, 'Shipping name is required'),
+    shipping_phone: text(40).nullish(),
+    contact_email: z.email().max(200).nullish(),
+    customer_notes: text(1000).nullish(),
+    shipping_address: addressSchema.nullish(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.delivery_method === 'shipping' && !input.shipping_address) {
+      ctx.addIssue({ code: 'custom', path: ['shipping_address'], message: 'Address is required' });
+    }
+  });
 
 /**
  * Turns the user's cart into an order.
  *
  * Prices come from the catalog (read with the user's client), never from the
- * request. Without database transactions the steps run in an order that can
- * be undone: stock is reserved first (compare-and-swap, see stock.ts), then
- * the order is written with the service-role client; if writing fails the
- * order is deleted and the stock given back.
+ * request. Stock isn't tracked, so nothing is reserved. Without database
+ * transactions, if writing the lines fails the order is deleted again.
  */
 export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutSchema>): Promise<Order> {
   const { lines, removed } = await loadCartLines(user);
   if (removed > 0) throw conflict('Some products in your cart are no longer available. Please review it.');
   if (lines.length === 0) throw conflict('Cart is empty');
 
-  // The same variant can be on several lines (different customizations), so
-  // stock is checked against the total quantity per variant.
-  const quantityByVariant = new Map<string, number>();
-  for (const line of lines) {
-    const id = line.product_variants.id;
-    quantityByVariant.set(id, (quantityByVariant.get(id) ?? 0) + line.quantity);
-  }
-  const tracked = new Map(
-    [...quantityByVariant].filter(([id]) => {
-      const line = lines.find((l) => l.product_variants.id === id)!;
-      return line.product_variants.stock !== null;
-    }),
-  );
-
-  if (!(await reserveStock(tracked))) {
-    throw conflict('Not enough stock for some products in your cart. Please review it.');
-  }
-
   const subtotal = lines.reduce((sum, line) => sum + line.unit_price_cents * line.quantity, 0);
-  const shipping = shippingFor(await getSettings(), subtotal);
+  const pickup = input.delivery_method === 'pickup';
+  const shipping = shippingFor(await getSettings(), subtotal, {
+    method: input.delivery_method,
+    postalCode: input.shipping_address?.postal_code,
+  });
   const admin = supabaseAdmin();
   let orderId: string | null = null;
 
@@ -134,7 +130,9 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
           contact_email: input.contact_email || user.email,
           shipping_name: input.shipping_name,
           shipping_phone: input.shipping_phone || null,
-          shipping_address: input.shipping_address,
+          delivery_method: input.delivery_method,
+          // Pickup orders have no address (the column can't be null).
+          shipping_address: pickup ? {} : input.shipping_address,
           customer_notes: input.customer_notes || null,
         })
         .select('id')
@@ -162,9 +160,8 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
 
     await recordStatusChange(order.id, null, 'pending', user.id);
   } catch (error) {
-    // Undo what was done so far: the order (its lines cascade) and the stock.
+    // Undo what was done so far: the order (its lines cascade).
     if (orderId) await admin.from('orders').delete().eq('id', orderId);
-    await releaseStock(tracked);
     throw error;
   }
 
@@ -195,19 +192,10 @@ async function recordStatusChange(
   );
 }
 
-/** Units per variant on an order, to give back when it's cancelled. */
-function orderQuantities(order: Order): Map<string, number> {
-  const quantities = new Map<string, number>();
-  for (const item of order.order_items ?? []) {
-    if (item.variant_id) quantities.set(item.variant_id, (quantities.get(item.variant_id) ?? 0) + item.quantity);
-  }
-  return quantities;
-}
-
 /**
  * Moves an order to a new status. The update only applies if the order still
  * has the status we read (compare-and-swap), so two simultaneous changes
- * can't both win, and a cancellation can't give stock back twice.
+ * can't both win.
  */
 async function transition(order: Order, to: OrderStatus, actorId: string): Promise<boolean> {
   if (order.status === to) return false;
@@ -228,7 +216,6 @@ async function transition(order: Order, to: OrderStatus, actorId: string): Promi
   if (updated.length === 0) throw conflict('The order was changed by someone else. Reload and try again.');
 
   await recordStatusChange(order.id, order.status, to, actorId);
-  if (to === 'cancelled') await releaseStock(orderQuantities(order));
   return true;
 }
 

@@ -62,9 +62,7 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
   @override
   void initState() {
     super.initState();
-    _variant =
-        product.activeVariants.where((v) => v.isInStock).firstOrNull ??
-        product.activeVariants.firstOrNull;
+    _variant = product.activeVariants.firstOrNull;
   }
 
   @override
@@ -73,10 +71,8 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
     super.dispose();
   }
 
-  int get _maxQuantity {
-    final stock = _variant?.stock;
-    return stock == null ? 99 : stock.clamp(0, 99);
-  }
+  /// Stock isn't tracked, so only the cart's own line limit applies.
+  static const _maxQuantity = 99;
 
   Future<void> _addToCart() async {
     final variant = _variant;
@@ -160,7 +156,6 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
     final price = variant == null
         ? product.basePriceCents
         : product.priceOf(variant);
-    final soldOut = variant == null || !variant.isInStock;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,24 +220,18 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
             const SizedBox(width: 16),
             Expanded(
               child: FilledButton.icon(
-                onPressed: soldOut || _adding ? null : _addToCart,
+                onPressed: variant == null || _adding ? null : _addToCart,
                 icon: _adding
                     ? const SizedBox.square(
                         dimension: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.add_shopping_cart),
-                label: Text(soldOut ? 'Agotado' : 'Añadir al carrito'),
+                label: const Text('Añadir al carrito'),
               ),
             ),
           ],
         ),
-        // The stock left is not shown to customers, only whether it's sold
-        // out (the button) or made to order.
-        if (!(variant?.tracksStock ?? false)) ...[
-          const SizedBox(height: 8),
-          Text('Hecho por encargo', style: textTheme.bodySmall),
-        ],
         if (product.description != null) ...[
           const SizedBox(height: 24),
           Text(
@@ -347,8 +336,7 @@ class _QuantityStepper extends StatelessWidget {
   }
 }
 
-/// One row of values for an option; the selected one is highlighted and
-/// values whose variant is sold out say so.
+/// One row of values for an option; the selected one is highlighted.
 class _OptionValues extends StatelessWidget {
   const _OptionValues({
     required this.product,
@@ -372,13 +360,8 @@ class _OptionValues extends StatelessWidget {
           Builder(
             builder: (context) {
               final isSelected = selected[option.name] == value;
-              final variant = product.variantFor({
-                ...selected,
-                option.name: value,
-              });
-              final soldOut = variant != null && !variant.isInStock;
               return ChoiceChip(
-                label: Text(soldOut ? '$value (agotado)' : value),
+                label: Text(value),
                 selected: isSelected,
                 labelStyle: TextStyle(
                   color: isSelected ? AppColors.cream : AppColors.ink,

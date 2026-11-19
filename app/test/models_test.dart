@@ -144,6 +144,38 @@ void main() {
     expect(const ShopSettings(shippingFlatCents: 495).shippingFor(100000), 495);
   });
 
+  test('Madrid postal codes and store pickup have their own rate', () {
+    const settings = ShopSettings(
+      shippingFlatCents: 600,
+      shippingMadridCents: 500,
+    );
+    expect(settings.shippingFor(2000, postalCode: '28010'), 500);
+    expect(settings.shippingFor(2000, postalCode: '08010'), 600);
+    expect(settings.shippingFor(2000), 600);
+    expect(settings.shippingFor(2000, pickup: true, postalCode: '08010'), 0);
+    // Without a Madrid rate, Madrid pays the normal one.
+    expect(
+      const ShopSettings(
+        shippingFlatCents: 600,
+      ).shippingFor(2000, postalCode: '28010'),
+      600,
+    );
+    expect(isMadridPostalCode('28 001'), isTrue);
+    expect(isMadridPostalCode('2800'), isFalse);
+    expect(isMadridPostalCode('128001'), isFalse);
+    for (final valid in ['28010', '01001', '08 001', '52006']) {
+      expect(isSpanishPostalCode(valid), isTrue, reason: valid);
+    }
+    for (final invalid in ['00123', '53001', '2801', '280100', 'abcde', '']) {
+      expect(isSpanishPostalCode(invalid), isFalse, reason: invalid);
+    }
+    expect(
+      shippingRatesText(settings),
+      'Madrid ${formatCents(500)} · Resto de España ${formatCents(600)} · '
+      'Recogida en tienda gratis',
+    );
+  });
+
   test('slugify', () {
     expect(slugify('Cojín Nube 30x50'), 'cojin-nube-30x50');
     expect(slugify('  ¡Año nuevo!  '), 'ano-nuevo');
