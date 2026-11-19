@@ -116,6 +116,45 @@ void main() {
     });
   });
 
+  testWidgets('one row per option picks the matching variant', (tester) async {
+    Map<String, dynamic> variant(String id, String size, String material) => {
+      'id': id,
+      'product_id': 'p1',
+      'name': '$size · $material',
+      'options': {'Tamaño': size, 'Material': material},
+      'stock': id == 'v2' ? 0 : 5,
+    };
+    await pumpProduct(
+      tester,
+      Product.fromJson({
+        'id': 'p1',
+        'name': 'Bola',
+        'slug': 'bola',
+        'base_price_cents': 800,
+        'product_variants': [
+          variant('v1', '8 cm', 'Cristal'),
+          variant('v2', '8 cm', 'Madera'),
+          variant('v3', '10 cm', 'Cristal'),
+          variant('v4', '10 cm', 'Madera'),
+        ],
+        'product_images': [],
+      }),
+    );
+
+    expect(find.text('Tamaño'), findsOneWidget);
+    expect(find.text('Material'), findsOneWidget);
+    expect(find.text('Madera (agotado)'), findsOneWidget);
+
+    await tester.tap(find.text('10 cm'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Madera'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Añadir al carrito'));
+    await tester.pumpAndSettle();
+
+    expect(cartBodies.single['variant_id'], 'v4');
+  });
+
   test('choice lists round-trip through JSON', () {
     final product = _product();
     expect(product.choiceFields.single.options, ['Rojo', 'Azul']);
