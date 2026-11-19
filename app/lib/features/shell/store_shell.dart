@@ -124,7 +124,7 @@ class _CategoryMenuBar extends StatelessWidget {
 }
 
 /// Tab-like button that mimics the site's menu: white, rounded, dark green
-/// when selected, with a dropdown for sub-categories.
+/// when the category or one of its sub-categories is open.
 class _CategoryMenuButton extends StatelessWidget {
   const _CategoryMenuButton({required this.node, required this.currentPath});
 
@@ -144,32 +144,12 @@ class _CategoryMenuButton extends StatelessWidget {
       elevation: 1,
     );
 
-    if (node.children.isEmpty) {
-      return FilledButton(
-        style: style,
-        onPressed: () => context.go('/c/${node.category.slug}'),
-        child: Text(node.category.name),
-      );
-    }
-
-    return MenuAnchor(
-      menuChildren: [
-        MenuItemButton(
-          onPressed: () => context.go('/c/${node.category.slug}'),
-          child: Text('Todo ${node.category.name}'),
-        ),
-        for (final child in node.children)
-          MenuItemButton(
-            onPressed: () => context.go('/c/${child.slug}'),
-            child: Text(child.name),
-          ),
-      ],
-      builder: (context, controller, _) => FilledButton(
-        style: style,
-        onPressed: () =>
-            controller.isOpen ? controller.close() : controller.open(),
-        child: Text(node.category.name),
-      ),
+    // Goes straight to the category, which lists its sub-categories' products
+    // too and shows the sub-categories as chips to narrow down.
+    return FilledButton(
+      style: style,
+      onPressed: () => context.go('/c/${node.category.slug}'),
+      child: Text(node.category.name),
     );
   }
 }
@@ -201,27 +181,10 @@ class _CategoryDrawer extends StatelessWidget {
             onTap: () => go('/'),
           ),
           for (final node in tree)
-            node.children.isEmpty
-                ? ListTile(
-                    title: Text(node.category.name),
-                    onTap: () => go('/c/${node.category.slug}'),
-                  )
-                : ExpansionTile(
-                    title: Text(node.category.name),
-                    children: [
-                      ListTile(
-                        contentPadding: const EdgeInsets.only(left: 32),
-                        title: Text('Todo ${node.category.name}'),
-                        onTap: () => go('/c/${node.category.slug}'),
-                      ),
-                      for (final child in node.children)
-                        ListTile(
-                          contentPadding: const EdgeInsets.only(left: 32),
-                          title: Text(child.name),
-                          onTap: () => go('/c/${child.slug}'),
-                        ),
-                    ],
-                  ),
+            ListTile(
+              title: Text(node.category.name),
+              onTap: () => go('/c/${node.category.slug}'),
+            ),
         ],
       ),
     );
