@@ -7,21 +7,27 @@ import 'api_client.dart';
 class CheckoutRequest {
   const CheckoutRequest({
     required this.shippingName,
-    required this.shippingAddress,
+    this.deliveryMethod = DeliveryMethod.shipping,
+    this.shippingAddress,
     this.shippingPhone,
     this.contactEmail,
     this.customerNotes,
   });
 
   final String shippingName;
-  final ShippingAddress shippingAddress;
+  final DeliveryMethod deliveryMethod;
+
+  /// Required to ship; `null` when picked up.
+  final ShippingAddress? shippingAddress;
   final String? shippingPhone;
   final String? contactEmail;
   final String? customerNotes;
 
   Map<String, dynamic> toJson() => {
+    'delivery_method': deliveryMethod.name,
     'shipping_name': shippingName,
-    'shipping_address': shippingAddress.toJson(),
+    if (deliveryMethod == DeliveryMethod.shipping)
+      'shipping_address': shippingAddress?.toJson(),
     'shipping_phone': shippingPhone,
     'contact_email': contactEmail,
     'customer_notes': customerNotes,

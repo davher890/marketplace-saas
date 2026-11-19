@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/money.dart';
 import '../../core/auth.dart';
 import '../../models/order.dart';
+import '../../models/shop_settings.dart';
 import '../../repositories/cart_repository.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../repositories/order_repository.dart';
@@ -32,7 +33,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _city = TextEditingController();
   final _province = TextEditingController();
   final _notes = TextEditingController();
+  DeliveryMethod _delivery = DeliveryMethod.shipping;
   bool _submitting = false;
+
+  bool get _pickup => _delivery == DeliveryMethod.pickup;
+
+  @override
+  void initState() {
+    super.initState();
+    // Madrid postal codes have their own rate: refresh the summary.
+    _postalCode.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -67,16 +78,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           .checkout(
             CheckoutRequest(
               shippingName: _name.text.trim(),
+              deliveryMethod: _delivery,
               contactEmail: _nullIfEmpty(_email),
               shippingPhone: _nullIfEmpty(_phone),
               customerNotes: _nullIfEmpty(_notes),
-              shippingAddress: ShippingAddress(
-                line1: _line1.text.trim(),
-                line2: _line2.text.trim(),
-                postalCode: _postalCode.text.trim(),
-                city: _city.text.trim(),
-                province: _province.text.trim(),
-              ),
+              shippingAddress: _pickup
+                  ? null
+                  : ShippingAddress(
+                      line1: _line1.text.trim(),
+                      line2: _line2.text.trim(),
+                      postalCode: _postalCode.text.trim(),
+                      city: _city.text.trim(),
+                      province: _province.text.trim(),
+                    ),
             ),
           );
       ref.invalidate(cartProvider);
@@ -124,7 +138,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               child: Center(child: Text('Tu carrito está vacío.')),
             );
           }
-          final shipping = settings?.shippingFor(cart.subtotalCents) ?? 0;
+          final shipping =
+              settings?.shippingFor(
+                cart.subtotalCents,
+                pickup: _pickup,
+                postalCode: _postalCode.text,
+              ) ??
+              0;
 
           return Form(
             key: _formKey,
@@ -132,7 +152,34 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SectionTitle('Datos de envío'),
+                  const SectionTitle('Entrega'),
+                  SegmentedButton<DeliveryMethod>(
+                    segments: const [
+                      ButtonSegment(
+                        value: DeliveryMethod.shipping,
+                        icon: Icon(Icons.local_shipping_outlined),
+                        label: Text('Envío a domicilio'),
+                      ),
+                      ButtonSegment(
+                        value: DeliveryMethod.pickup,
+                        icon: Icon(Icons.storefront_outlined),
+                        label: Text('Recogida en tienda'),
+                      ),
+                    ],
+                    selected: {_delivery},
+                    onSelectionChanged: (selection) =>
+                        setState(() => _delivery = selection.single),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _pickup
+                        ? 'Sin gastos de envío. Te avisaremos cuando esté listo para recoger.'
+                        : settings == null
+                        ? ''
+                        : shippingRatesText(settings, withPickup: false),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
                   field(
                     _name,
                     'Nombre y apellidos',
@@ -152,45 +199,47 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     keyboard: TextInputType.phone,
                     autofill: const [AutofillHints.telephoneNumber],
                   ),
-                  field(
-                    _line1,
-                    'Dirección',
-                    required: true,
-                    autofill: const [AutofillHints.streetAddressLine1],
-                  ),
-                  field(
-                    _line2,
-                    'Piso, puerta... (opcional)',
-                    autofill: const [AutofillHints.streetAddressLine2],
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: field(
-                          _postalCode,
-                          'Código postal',
-                          required: true,
-                          keyboard: TextInputType.number,
-                          autofill: const [AutofillHints.postalCode],
+                  if (!_pickup) ...[
+                    field(
+                      _line1,
+                      'Dirección',
+                      required: true,
+                      autofill: const [AutofillHints.streetAddressLine1],
+                    ),
+                    field(
+                      _line2,
+                      'Piso, puerta... (opcional)',
+                      autofill: const [AutofillHints.streetAddressLine2],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: field(
+                            _postalCode,
+                            'Código postal',
+                            required: true,
+                            keyboard: TextInputType.number,
+                            autofill: const [AutofillHints.postalCode],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: field(
-                          _city,
-                          'Ciudad',
-                          required: true,
-                          autofill: const [AutofillHints.addressCity],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: field(
+                            _city,
+                            'Ciudad',
+                            required: true,
+                            autofill: const [AutofillHints.addressCity],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  field(
-                    _province,
-                    'Provincia',
-                    autofill: const [AutofillHints.addressState],
-                  ),
+                      ],
+                    ),
+                    field(
+                      _province,
+                      'Provincia',
+                      autofill: const [AutofillHints.addressState],
+                    ),
+                  ],
                   field(_notes, 'Notas para Doña Galleta', maxLines: 3),
                   const SizedBox(height: 8),
                   Card(
@@ -206,7 +255,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           const Divider(height: 24),
                           _Row('Subtotal', formatCents(cart.subtotalCents)),
                           _Row(
-                            'Envío',
+                            _pickup ? 'Recogida en tienda' : 'Envío',
                             shipping == 0 ? 'Gratis' : formatCents(shipping),
                           ),
                           _Row(

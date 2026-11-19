@@ -108,7 +108,7 @@ class OrderSummary extends StatelessWidget {
                 const Divider(height: 24),
                 row('Subtotal', formatCents(order.subtotalCents)),
                 row(
-                  'Envío',
+                  order.isPickup ? 'Recogida en tienda' : 'Envío',
                   order.shippingCents == 0
                       ? 'Gratis'
                       : formatCents(order.shippingCents),
@@ -125,13 +125,17 @@ class OrderSummary extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Envío', style: textTheme.titleMedium),
+                Text(
+                  order.isPickup ? 'Recogida en tienda' : 'Envío',
+                  style: textTheme.titleMedium,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   order.shippingName,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                for (final line in order.shippingAddress.lines) Text(line),
+                if (!order.isPickup)
+                  for (final line in order.shippingAddress.lines) Text(line),
                 if (order.shippingPhone != null)
                   Text('Tel. ${order.shippingPhone}'),
                 if (order.contactEmail != null) Text(order.contactEmail!),

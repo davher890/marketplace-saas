@@ -62,6 +62,16 @@ class ShippingAddress {
   ];
 }
 
+/// How the customer gets the order: sent to their address or picked up in
+/// the shop (free, no address).
+enum DeliveryMethod {
+  shipping,
+  pickup;
+
+  static DeliveryMethod fromName(String? name) =>
+      name == 'pickup' ? pickup : shipping;
+}
+
 class Order {
   const Order({
     required this.id,
@@ -73,6 +83,7 @@ class Order {
     required this.shippingName,
     required this.shippingAddress,
     required this.createdAt,
+    this.deliveryMethod = DeliveryMethod.shipping,
     this.userId,
     this.contactEmail,
     this.shippingPhone,
@@ -93,11 +104,14 @@ class Order {
   final String shippingName;
   final String? shippingPhone;
   final ShippingAddress shippingAddress;
+  final DeliveryMethod deliveryMethod;
   final String? customerNotes;
   final String? adminNotes;
   final DateTime createdAt;
   final List<OrderItem> items;
   final List<OrderStatusChange> history;
+
+  bool get isPickup => deliveryMethod == DeliveryMethod.pickup;
 
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
@@ -140,6 +154,7 @@ class Order {
     shippingAddress: ShippingAddress.fromJson(
       Map<String, dynamic>.from(json['shipping_address'] as Map? ?? {}),
     ),
+    deliveryMethod: DeliveryMethod.fromName(json['delivery_method'] as String?),
     customerNotes: json['customer_notes'] as String?,
     adminNotes: json['admin_notes'] as String?,
     createdAt: DateTime.parse(json['created_at'] as String).toLocal(),

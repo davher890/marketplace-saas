@@ -6,7 +6,7 @@ import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
 import { sendStatusChangeEmail } from './orderEmails';
-import { getSettings, shippingFor } from './settings';
+import { DELIVERY_METHODS, getSettings, shippingFor } from './settings';
 
 export const ORDER_STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
@@ -68,20 +68,30 @@ export async function getOrderFor(user: AuthUser, orderId: string, admin: boolea
 
 const text = (max: number) => z.string().trim().max(max);
 
-export const checkoutSchema = z.object({
-  shipping_name: text(120).min(1, 'Shipping name is required'),
-  shipping_phone: text(40).nullish(),
-  contact_email: z.email().max(200).nullish(),
-  customer_notes: text(1000).nullish(),
-  shipping_address: z.object({
-    line1: text(200).min(1, 'Address is required'),
-    line2: text(200).default(''),
-    city: text(100).min(1, 'City is required'),
-    postal_code: text(20).min(1, 'Postal code is required'),
-    province: text(100).default(''),
-    country: text(2).default('ES'),
-  }),
+const addressSchema = z.object({
+  line1: text(200).min(1, 'Address is required'),
+  line2: text(200).default(''),
+  city: text(100).min(1, 'City is required'),
+  postal_code: text(20).min(1, 'Postal code is required'),
+  province: text(100).default(''),
+  country: text(2).default('ES'),
 });
+
+export const checkoutSchema = z
+  .object({
+    /** 'pickup': collected in the shop, free shipping and no address. */
+    delivery_method: z.enum(DELIVERY_METHODS).default('shipping'),
+    shipping_name: text(120).min(1, 'Shipping name is required'),
+    shipping_phone: text(40).nullish(),
+    contact_email: z.email().max(200).nullish(),
+    customer_notes: text(1000).nullish(),
+    shipping_address: addressSchema.nullish(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.delivery_method === 'shipping' && !input.shipping_address) {
+      ctx.addIssue({ code: 'custom', path: ['shipping_address'], message: 'Address is required' });
+    }
+  });
 
 /**
  * Turns the user's cart into an order.
@@ -96,7 +106,11 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
   if (lines.length === 0) throw conflict('Cart is empty');
 
   const subtotal = lines.reduce((sum, line) => sum + line.unit_price_cents * line.quantity, 0);
-  const shipping = shippingFor(await getSettings(), subtotal);
+  const pickup = input.delivery_method === 'pickup';
+  const shipping = shippingFor(await getSettings(), subtotal, {
+    method: input.delivery_method,
+    postalCode: input.shipping_address?.postal_code,
+  });
   const admin = supabaseAdmin();
   let orderId: string | null = null;
 
@@ -113,7 +127,9 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
           contact_email: input.contact_email || user.email,
           shipping_name: input.shipping_name,
           shipping_phone: input.shipping_phone || null,
-          shipping_address: input.shipping_address,
+          delivery_method: input.delivery_method,
+          // Pickup orders have no address (the column can't be null).
+          shipping_address: pickup ? {} : input.shipping_address,
           customer_notes: input.customer_notes || null,
         })
         .select('id')

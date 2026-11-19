@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/money.dart';
 import '../../core/auth.dart';
 import '../../models/cart.dart';
+import '../../models/shop_settings.dart';
 import '../../repositories/cart_repository.dart';
 import '../../repositories/catalog_repository.dart';
 import '../../widgets/common.dart';
@@ -63,7 +64,6 @@ class _CartContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(shopSettingsProvider).value;
-    final shipping = settings?.shippingFor(cart.subtotalCents) ?? 0;
     final threshold = settings?.freeShippingThresholdCents;
     final textTheme = Theme.of(context).textTheme;
 
@@ -87,10 +87,17 @@ class _CartContent extends ConsumerWidget {
             child: Column(
               children: [
                 _SummaryRow('Subtotal', formatCents(cart.subtotalCents)),
-                _SummaryRow(
-                  'Envío (estimado)',
-                  shipping == 0 ? 'Gratis' : formatCents(shipping),
-                ),
+                // Shipping depends on pickup and the postal code, chosen at
+                // checkout.
+                const _SummaryRow('Envío', 'Se calcula al finalizar'),
+                if (settings != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      shippingRatesText(settings),
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
                 if (threshold != null && cart.subtotalCents < threshold)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -101,8 +108,8 @@ class _CartContent extends ConsumerWidget {
                   ),
                 const Divider(height: 24),
                 _SummaryRow(
-                  'Total',
-                  formatCents(cart.subtotalCents + shipping),
+                  'Total sin envío',
+                  formatCents(cart.subtotalCents),
                   bold: true,
                 ),
                 const SizedBox(height: 16),
