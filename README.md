@@ -204,9 +204,18 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…06_push_devices_anyone.sql`: devices without an account (anyone who opens
      the Android app).
    - `…07_product_choice_fields.sql`: choice lists on products.
+   - `…08_pickup_and_madrid_shipping.sql`: store pickup and the Madrid shipping
+     rate.
+   - `…09_move_to_dona_galleta_schema.sql`: moves every table and type from
+     `public` to the `dona_galleta` schema, where the API reads them
+     (`DB_SCHEMA` in `server/supabase.ts`).
 
-   All but the first are safe to run more than once.
-3. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
+   All but the first are safe to run more than once. Once `…09` has run, don't
+   re-run the earlier ones (they would create empty tables in `public` again);
+   new migrations create their objects in `dona_galleta`.
+3. Project Settings → Data API → **Exposed schemas**: add `dona_galleta`, so the
+   API can reach the tables.
+4. Authentication → URL Configuration, so the links in Supabase's emails (sign-up
    confirmation, password recovery) open the app:
    - **Site URL**: the deployed web app, e.g. `https://<your-vercel-domain>`. It is
      `http://localhost:3000` by default, and links that don't name an allowed
@@ -217,12 +226,12 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 
    The link signs you in on the web app wherever you open it (the session comes in
    the link itself).
-4. Authentication → Rate Limits: Supabase counts sign-in and sign-up attempts per
+5. Authentication → Rate Limits: Supabase counts sign-in and sign-up attempts per
    IP address, and every attempt now comes from the API on Vercel, so all users
    share the same limit. If people get "Demasiados intentos", raise the limits for
    sign-ins and token refreshes there.
-5. Optional: load sample data with `supabase/seed.sql`.
-6. Sign up in the app, then make yourself admin (see [Administrators](#administrators)).
+6. Optional: load sample data with `supabase/seed.sql`.
+7. Sign up in the app, then make yourself admin (see [Administrators](#administrators)).
 
 ### 2. API environment
 
@@ -452,7 +461,7 @@ How it works:
 
 ## Administrators
 
-The role lives in `public.profiles.role` (`customer` or `admin`) and nobody can change
+The role lives in `dona_galleta.profiles.role` (`customer` or `admin`) and nobody can change
 it from the app: run these in Supabase's SQL editor. The person must have signed in
 at least once, since that's when their profile row is created; otherwise the update
 changes 0 rows.
@@ -460,7 +469,7 @@ changes 0 rows.
 **Make someone admin:**
 
 ```sql
-update public.profiles
+update dona_galleta.profiles
 set role = 'admin', updated_at = now()
 where id = (select id from auth.users where lower(email) = lower('someone@example.com'));
 ```
@@ -468,7 +477,7 @@ where id = (select id from auth.users where lower(email) = lower('someone@exampl
 **Remove the role:**
 
 ```sql
-update public.profiles
+update dona_galleta.profiles
 set role = 'customer', updated_at = now()
 where id = (select id from auth.users where lower(email) = lower('someone@example.com'));
 ```
@@ -477,7 +486,7 @@ where id = (select id from auth.users where lower(email) = lower('someone@exampl
 
 ```sql
 select u.email, p.full_name, p.updated_at
-from public.profiles p
+from dona_galleta.profiles p
 join auth.users u on u.id = p.id
 where p.role = 'admin'
 order by u.email;

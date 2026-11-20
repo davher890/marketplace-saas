@@ -1,9 +1,8 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
 import type { AuthUser } from '../auth';
 import { badRequest, conflict, notFound } from '../http';
-import { check, now, supabaseAdmin, unwrap } from '../supabase';
+import { check, now, supabaseAdmin, unwrap, type DbClient } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
 import { sendStatusChangeEmail } from './orderEmails';
 import { DELIVERY_METHODS, getSettings, isSpanishPostalCode, shippingFor } from './settings';
@@ -34,7 +33,7 @@ function sortNested(order: Order): Order {
 }
 
 export async function listOrders(
-  db: SupabaseClient,
+  db: DbClient,
   filter: { userId?: string; status?: OrderStatus } = {},
 ): Promise<Order[]> {
   let query = db.from('orders').select('*, order_items(*)');
@@ -44,7 +43,7 @@ export async function listOrders(
   return rows.map(sortNested);
 }
 
-export async function getOrder(db: SupabaseClient, orderId: string): Promise<Order | null> {
+export async function getOrder(db: DbClient, orderId: string): Promise<Order | null> {
   const order = unwrap(
     await db
       .from('orders')

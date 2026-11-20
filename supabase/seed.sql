@@ -4,7 +4,7 @@
 -- =============================================================================
 
 -- Top-level categories --------------------------------------------------------
-insert into public.categories (name, slug, position) values
+insert into dona_galleta.categories (name, slug, position) values
   ('Joyería',            'joyeria',          1),
   ('Complementos',       'complementos',     2),
   ('Ropa',               'ropa',             3),
@@ -13,7 +13,7 @@ insert into public.categories (name, slug, position) values
   ('Regalos',            'regalos',          6);
 
 -- Sub-categories --------------------------------------------------------------
-insert into public.categories (parent_id, name, slug, position)
+insert into dona_galleta.categories (parent_id, name, slug, position)
 select parent.id, sub.name, sub.slug, sub.position
 from (values
   ('joyeria',          'Anillos',              'anillos',              1),
@@ -37,11 +37,11 @@ from (values
   ('regalos',          'Cestas de bebés',      'cestas-bebes',         2),
   ('regalos',          'Mascotas',             'mascotas',             3)
 ) as sub(parent_slug, name, slug, position)
-join public.categories parent on parent.slug = sub.parent_slug;
+join dona_galleta.categories parent on parent.slug = sub.parent_slug;
 
 -- Sample products ---------------------------------------------------------------
 with new_products as (
-  insert into public.products (category_id, name, slug, description, base_price_cents, is_customizable, customization_label, is_featured)
+  insert into dona_galleta.products (category_id, name, slug, description, base_price_cents, is_customizable, customization_label, is_featured)
   select c.id, p.name, p.slug, p.description, p.price, p.customizable, p.label, p.featured
   from (values
     ('ropa-peques', 'Conjunto frase/dibujo Superman', 'conjunto-superman',
@@ -55,10 +55,10 @@ with new_products as (
     ('recien-nacido', 'Chupetero personalizado', 'chupetero-personalizado',
      'Chupetero de tela con el nombre del bebé.', 1200, true, 'Nombre del bebé', true)
   ) as p(category_slug, name, slug, description, price, customizable, label, featured)
-  join public.categories c on c.slug = p.category_slug
+  join dona_galleta.categories c on c.slug = p.category_slug
   returning id, slug
 )
-insert into public.product_variants (product_id, sku, name, options, stock, position)
+insert into dona_galleta.product_variants (product_id, sku, name, options, stock, position)
 select np.id, v.sku, v.name, v.options::jsonb, v.stock, v.position
 from new_products np
 join (values

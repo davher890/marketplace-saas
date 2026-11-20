@@ -1,7 +1,5 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-
 import { HttpError } from './http';
-import { supabase, supabaseAdmin, supabaseForUser } from './supabase';
+import { supabase, supabaseAdmin, supabaseForUser, type DbClient } from './supabase';
 
 export interface AuthUser {
   id: string;
@@ -9,7 +7,7 @@ export interface AuthUser {
   /** Name given at sign up (`user_metadata.full_name`). */
   fullName: string | null;
   /** Supabase client acting as this user: RLS applies to every query. */
-  db: SupabaseClient;
+  db: DbClient;
   /** The verified access token the request came with. */
   accessToken: string;
 }
