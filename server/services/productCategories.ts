@@ -1,6 +1,5 @@
 import { badRequest } from '../http';
-import { check, unwrap } from '../supabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { check, unwrap, type DbClient } from '../supabase';
 
 // A product can be listed in several categories (`product_categories`).
 // `products.category_id` is its main one and is always among them. The API
@@ -38,7 +37,7 @@ export function normalizeCategoryIds(input: { category_id: string | null; catego
 }
 
 /** Fails with 400 before writing anything if a category doesn't exist. */
-export async function assertCategoriesExist(db: SupabaseClient, categoryIds: string[]): Promise<void> {
+export async function assertCategoriesExist(db: DbClient, categoryIds: string[]): Promise<void> {
   if (categoryIds.length === 0) return;
   const found = unwrap(await db.from('categories').select('id').in('id', categoryIds)) as { id: string }[];
   if (found.length !== categoryIds.length) throw badRequest('Some categories do not exist');
@@ -46,7 +45,7 @@ export async function assertCategoriesExist(db: SupabaseClient, categoryIds: str
 
 /** Makes the product's links exactly `categoryIds`. */
 export async function syncProductCategories(
-  db: SupabaseClient,
+  db: DbClient,
   productId: string,
   categoryIds: string[],
 ): Promise<void> {

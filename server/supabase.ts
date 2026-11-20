@@ -2,7 +2,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { HttpError } from './http';
 
-const noSession = { auth: { persistSession: false, autoRefreshToken: false } } as const;
+/**
+ * Postgres schema with the shop's tables (see the migration
+ * …09_move_to_dona_galleta_schema.sql). It must be listed in Supabase's
+ * Data API → Exposed schemas.
+ */
+export const DB_SCHEMA = 'dona_galleta';
+
+const noSession = {
+  auth: { persistSession: false, autoRefreshToken: false },
+  db: { schema: DB_SCHEMA },
+} as const;
 
 function env(name: string): string {
   const value = process.env[name];
@@ -10,14 +20,17 @@ function env(name: string): string {
   return value;
 }
 
-let publicClient: SupabaseClient | undefined;
-let adminClient: SupabaseClient | undefined;
+/** A supabase-js client bound to `DB_SCHEMA` (tables are untyped). */
+export type DbClient = SupabaseClient<any, typeof DB_SCHEMA>;
+
+let publicClient: DbClient | undefined;
+let adminClient: DbClient | undefined;
 
 /**
  * Client with the publishable key. Used to verify access tokens and to read
  * the public catalog; RLS applies as the `anon` role.
  */
-export function supabase(): SupabaseClient {
+export function supabase(): DbClient {
   publicClient ??= createClient(env('SUPABASE_URL'), env('SUPABASE_PUBLISHABLE_KEY'), noSession);
   return publicClient;
 }
@@ -38,7 +51,7 @@ export function supabaseAuth(): SupabaseClient {
  * with every request), so RLS policies based on `auth.uid()` see the real
  * caller. Used for everything a customer does with their own data.
  */
-export function supabaseForUser(token: string): SupabaseClient {
+export function supabaseForUser(token: string): DbClient {
   return createClient(env('SUPABASE_URL'), env('SUPABASE_PUBLISHABLE_KEY'), {
     ...noSession,
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -51,7 +64,7 @@ export function supabaseForUser(token: string): SupabaseClient {
  * do with their own token (creating orders, changing stock, admin panel),
  * always after the API has checked who is calling.
  */
-export function supabaseAdmin(): SupabaseClient {
+export function supabaseAdmin(): DbClient {
   adminClient ??= createClient(env('SUPABASE_URL'), env('SUPABASE_SECRET_KEY'), noSession);
   return adminClient;
 }
