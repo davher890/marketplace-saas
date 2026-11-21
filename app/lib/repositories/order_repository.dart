@@ -96,6 +96,12 @@ class OrderRepository {
         await _api.patch('/api/admin/orders/$orderId', {'status': status.name}),
       );
 
+  /// Stripe payment page for one of the user's unpaid orders.
+  Future<Uri> payOnline(String orderId) async {
+    final json = await _api.post('/api/orders/$orderId/pay', const {});
+    return Uri.parse((json as Map<String, dynamic>)['url'] as String);
+  }
+
   /// Admin only. Marking it paid emails the customer.
   Future<Order> updatePaid(String orderId, bool paid) async => Order.fromJson(
     await _api.patch('/api/admin/orders/$orderId', {'paid': paid}),

@@ -29,7 +29,7 @@ export class Reply {
  * different origin (e.g. `http://localhost:8000` while running `flutter run -d chrome`).
  * The deployed web app is same-origin and the Android app is not subject to CORS.
  */
-function allowedOrigins(): string[] {
+export function allowedOrigins(): string[] {
   return (process.env.ALLOWED_ORIGINS ?? '')
     .split(',')
     .map((origin) => origin.trim())

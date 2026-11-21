@@ -95,6 +95,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             (state) => OrderDetailScreen(
               orderId: state.pathParameters['id']!,
               justPlaced: state.uri.queryParameters['placed'] == '1',
+              paymentReturn: PaymentReturn.fromUrl(
+                state.uri.queryParameters['pago'],
+              ),
             ),
           ),
         ],
