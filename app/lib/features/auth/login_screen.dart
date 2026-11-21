@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth.dart';
 import '../../repositories/profile_repository.dart';
 import '../../widgets/common.dart';
+import '../../widgets/password_fields.dart';
 
 /// Email + password sign in / sign up, through the API.
 class LoginScreen extends ConsumerStatefulWidget {
@@ -114,16 +115,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     (v == null || !v.contains('@')) ? 'Email no válido' : null,
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              PasswordField(
                 controller: _password,
-                decoration: const InputDecoration(labelText: 'Contraseña'),
-                obscureText: true,
+                label: 'Contraseña',
                 autofillHints: [
                   _isSignUp
                       ? AutofillHints.newPassword
                       : AutofillHints.password,
                 ],
-                onFieldSubmitted: (_) => _submit(),
+                onSubmitted: (_) => _submit(),
                 validator: (v) =>
                     (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
               ),
