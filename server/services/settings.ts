@@ -10,10 +10,12 @@ export interface ShopSettings {
   free_shipping_threshold_cents: number | null;
   contact_email: string | null;
   contact_phone: string | null;
+  /** Customers see "Pagar ahora" (Stripe); while false only admins do. */
+  online_payment_public: boolean;
 }
 
 const columns =
-  'shipping_flat_cents, shipping_madrid_cents, free_shipping_threshold_cents, contact_email, contact_phone';
+  'shipping_flat_cents, shipping_madrid_cents, free_shipping_threshold_cents, contact_email, contact_phone, online_payment_public';
 
 const defaults: ShopSettings = {
   shipping_flat_cents: 0,
@@ -21,6 +23,7 @@ const defaults: ShopSettings = {
   free_shipping_threshold_cents: null,
   contact_email: null,
   contact_phone: null,
+  online_payment_public: false,
 };
 
 /** Public settings (readable by anyone through RLS). */
@@ -75,6 +78,8 @@ export const settingsSchema = z.object({
   free_shipping_threshold_cents: cents.nullable(),
   contact_email: z.string().trim().max(200).nullable(),
   contact_phone: z.string().trim().max(40).nullable(),
+  /** Optional so older admin apps that don't send it keep the stored value. */
+  online_payment_public: z.boolean().optional(),
 });
 
 /** Admin only (checked by the route); written with the service-role client. */
@@ -89,6 +94,7 @@ export async function updateSettings(input: z.infer<typeof settingsSchema>): Pro
         free_shipping_threshold_cents: input.free_shipping_threshold_cents,
         contact_email: input.contact_email || null,
         contact_phone: input.contact_phone || null,
+        ...(input.online_payment_public !== undefined && { online_payment_public: input.online_payment_public }),
         updated_at: now(),
       },
       { onConflict: 'id' },

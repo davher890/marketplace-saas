@@ -277,7 +277,8 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
                       title: const Text('Pagado'),
                       subtitle: Text(
                         order.isPaid
-                            ? 'Desde el ${dateFormat.format(order.paidAt!)}'
+                            ? '${order.paidVia == 'stripe' ? 'Con Stripe' : 'Marcado a mano'}'
+                                  ' el ${dateFormat.format(order.paidAt!)}'
                             : 'Al marcarlo, se avisa al cliente por email.',
                       ),
                       value: order.isPaid,

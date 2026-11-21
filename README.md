@@ -170,7 +170,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Cart: one per user, lines merged per variant + customization, max 99, stock checked, customization required only for customizable products | `cart.ts` |
 | Checkout: prices re-read from the catalog, stock reserved per variant across lines, shipping from settings, order written, ordered lines removed from the cart. If a step fails, the order is deleted and the stock given back | `orders.ts` |
 | Status changes: only applied if the order still has the status that was read (so two changes can't both win), logged with who/when, `shipped_at` stamped, cancelled orders are final. Statuses: received → processing → shipped → delivered, or cancelled | `orders.ts` |
-| Payment is not a status: `paid_at` (null = not paid), set by hand from the admin order page (`{paid: true\|false}`) and later by the payment gateway. Marking an order paid emails the customer | `orders.ts`, `orderEmails.ts` |
+| Payment is not a status: `paid_at` (null = not paid), set by hand from the admin order page (`{paid: true\|false}`, `paid_via = 'manual'`) or by Stripe's webhook (`paid_via = 'stripe'`). Either way the customer gets the "Pago confirmado" email | `orders.ts`, `payments.ts`, `orderEmails.ts` |
 | Customers cancel only their own orders that are still *received* and not paid; admins any order | `orders.ts` |
 | Stock: compare-and-swap updates (`… where stock = <value read>`, retried), so concurrent checkouts can't oversell | `stock.ts` |
 | Duplicating a product: the copy is hidden until reviewed, its variants have no SKU (SKUs are unique), and stored photos are copied, so deleting either product never removes the other's files. A failed copy is deleted again | `products.ts`, `images.ts` |
@@ -214,6 +214,9 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…10_payment_apart_from_status.sql`: payment leaves the order statuses
      (`pending` / `paid` become `received`, delivered orders are marked paid)
      and is kept in `paid_at`.
+   - `…11_online_payment.sql`: online payment with Stripe (the *Pago online*
+     switch in Ajustes, and how and through which Stripe session an order was
+     paid).
 
    All but the first are safe to run more than once. Once `…09` has run, don't
    re-run the earlier ones (they would create empty tables in `public` again);
@@ -254,6 +257,8 @@ SMTP_PORT=465
 SMTP_USER=donagalletashop@gmail.com
 SMTP_PASSWORD=
 SITE_URL=https://www.xn--doagalleta-u9a.es
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
 ```
 
 | Variable | Where to find it | Used by |
@@ -266,7 +271,8 @@ SITE_URL=https://www.xn--doagalleta-u9a.es
 | `FIREBASE_SERVICE_ACCOUNT` | Optional. Service account key JSON on one line, see [Push notifications](#6-push-notifications). Secret | API |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Optional. The mail server for order emails, see [Emails](#8-emails). `SMTP_PASSWORD` is secret | API |
 | `EMAIL_FROM` | Optional sender, e.g. `"Doña Galleta" <donagalletashop@gmail.com>`. Defaults to "Doña Galleta" and `SMTP_USER` | API |
-| `SITE_URL` | Optional. The shop's address, for the links in emails | API |
+| `SITE_URL` | Optional. The shop's address, for the links in emails and the pages Stripe returns to | API |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Optional. Online payment, see [Online payment](#9-online-payment-stripe). Both secret | API |
 
 ```bash
 npm install
@@ -464,6 +470,44 @@ How it works:
   only reach the project's team members, at 2 per hour. With Gmail as custom SMTP in
   Authentication → Emails → SMTP Settings, they reach everyone.
 
+### 9. Online payment (Stripe)
+
+Customers pay on Stripe Checkout, Stripe's own payment page; the shop never sees
+card data. The methods offered (cards, Apple Pay, Google Pay, Bizum...) are chosen
+in the Stripe Dashboard → Settings → Payment methods.
+
+- At checkout the customer picks **Pagar ahora** or **Acordarlo con la tienda**.
+  Unpaid orders show a **Pagar ahora** button on their page, to pay later or try
+  again.
+- `POST /api/orders/:id/pay` opens a Checkout session with the order's lines and
+  shipping and returns its URL. The web app goes there in the same tab; the
+  Android app opens the browser. Stripe returns to `/orders/<id>?pago=ok` (or
+  `?pago=cancelado`), which waits for the confirmation.
+- Stripe's webhook marks the order paid (`paid_via = 'stripe'`) and the customer
+  gets the "Pago confirmado" email. An abandoned session just expires: the order
+  stays unpaid.
+- **Hidden at first:** only admins see it until *Administración → Ajustes →
+  Pago online para todos los clientes* is turned on. The API checks the same.
+
+Setup, first in **test mode** (works without the shop's fiscal data):
+
+1. In the Stripe Dashboard (test mode), Developers → API keys: copy the secret key
+   (`sk_test_…`) to `STRIPE_SECRET_KEY`.
+2. Developers → Webhooks → Add endpoint: `https://www.xn--doagalleta-u9a.es/api/stripe/webhook`,
+   events `checkout.session.completed`, `checkout.session.async_payment_succeeded`
+   and `checkout.session.async_payment_failed`. Copy its signing secret
+   (`whsec_…`) to `STRIPE_WEBHOOK_SECRET`.
+3. Add both to Vercel (Production, as *Sensitive*) and redeploy. `SITE_URL` must be
+   set too.
+4. Pay with the test card `4242 4242 4242 4242` (any future date and CVC).
+
+Locally, the [Stripe CLI](https://docs.stripe.com/stripe-cli) forwards the webhook:
+`stripe listen --forward-to localhost:3000/api/stripe/webhook` prints the
+`whsec_…` to put in `.env`.
+
+Going live: repeat the steps with the live keys (`sk_live_…`) and a live webhook,
+once the shop's Stripe account is activated.
+
 ## Administrators
 
 The role lives in `dona_galleta.profiles.role` (`customer` or `admin`) and nobody can change
@@ -527,6 +571,8 @@ needs the admin role.
 | POST | `/api/checkout` | Place an order from the cart. |
 | GET | `/api/orders`, `/api/orders/:id` | Own orders (admins can open any order). |
 | POST | `/api/orders/:id/cancel` | Cancel an order that is still received and not paid (admins: any order). |
+| POST | `/api/orders/:id/pay` | `{url}` of a Stripe Checkout page for one of your unpaid orders. Admins only until online payment is opened in Ajustes. |
+| POST | `/api/stripe/webhook` | Called by Stripe (signed with `STRIPE_WEBHOOK_SECRET`): marks the order paid. |
 | GET | `/api/admin/orders?status=&paid=` | All orders; `status` takes one or several (`delivered,cancelled`), `paid` is `true` or `false`. |
 | GET | `/api/admin/orders/summary?period=month\|quarter\|year\|all` | Figures for the *Resumen* page. |
 | PATCH | `/api/admin/orders/:id` | `{status?, paid?, admin_notes?}`. |
@@ -541,7 +587,7 @@ needs the admin role.
 | POST | `/api/admin/products/:id/images/upload-url` | `{file_name}` → `{bucket, path, token, content_type}`: a one-time signed upload for the Supabase SDK. |
 | POST | `/api/admin/products/:id/images` | Register `{storage_path}` or `{url}`. |
 | DELETE | `/api/admin/images/:id` | Delete an image (and its file). |
-| PUT | `/api/admin/settings` | Update shipping and contact settings. |
+| PUT | `/api/admin/settings` | Update shipping, contact and online payment settings. |
 
 Errors come back as `{"error": "..."}` with 400 (invalid input), 401, 403, 404,
 409 (business rule, e.g. out of stock) or 429 (too many attempts). Authentication

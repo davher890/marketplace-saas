@@ -259,7 +259,7 @@ export async function adminUpdateOrder(
       (
         await db
           .from('orders')
-          .update({ paid_at: markedPaid ? now() : null, updated_at: now() })
+          .update({ paid_at: markedPaid ? now() : null, paid_via: markedPaid ? 'manual' : null, updated_at: now() })
           .eq('id', orderId)
       ).error,
     );
