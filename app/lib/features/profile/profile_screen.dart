@@ -219,12 +219,9 @@ class _PasswordCardState extends ConsumerState<_PasswordCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
+              PasswordField(
                 controller: _current,
-                decoration: const InputDecoration(
-                  labelText: 'Contraseña actual',
-                ),
-                obscureText: true,
+                label: 'Contraseña actual',
                 autofillHints: const [AutofillHints.password],
                 textInputAction: TextInputAction.next,
                 validator: (v) => (v == null || v.isEmpty)
@@ -416,15 +413,12 @@ class _DeleteAccountDialogState extends ConsumerState<_DeleteAccountDialog> {
             'confirmarla.',
           ),
           const SizedBox(height: 16),
-          TextField(
+          PasswordField(
             controller: _password,
-            obscureText: true,
+            label: 'Contraseña',
             autofocus: true,
             enabled: !_deleting,
-            decoration: InputDecoration(
-              labelText: 'Contraseña',
-              errorText: _error,
-            ),
+            errorText: _error,
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _password.text.isEmpty ? null : _delete(),
           ),
