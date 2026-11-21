@@ -14,6 +14,7 @@ class AdminShell extends ConsumerWidget {
   final Widget child;
 
   static const _destinations = [
+    (path: '/admin/summary', icon: Icons.insights_outlined, label: 'Resumen'),
     (
       path: '/admin/orders',
       icon: Icons.receipt_long_outlined,

@@ -173,6 +173,7 @@ final pushRegistrationProvider = Provider<void>((ref) {
         final route = routeForMessage(message.data);
         if (route == null) return;
         ref.invalidate(adminOrdersProvider);
+        ref.invalidate(adminOrderStatsProvider);
         scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(

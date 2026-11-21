@@ -274,11 +274,6 @@ export async function sendNewOrderEmails(order: Order): Promise<void> {
 // -----------------------------------------------------------------------------
 
 const STATUS_COPY: Partial<Record<OrderStatus, { subject: string; heading: string; message: string }>> = {
-  paid: {
-    subject: 'Pago confirmado · pedido #{n}',
-    heading: 'Hemos recibido tu pago',
-    message: 'El pago de tu pedido <strong>#{n}</strong> está confirmado. En breve empezamos a prepararlo.',
-  },
   processing: {
     subject: 'Estamos preparando tu pedido #{n}',
     heading: 'Tu pedido está en preparación',
@@ -301,10 +296,23 @@ const STATUS_COPY: Partial<Record<OrderStatus, { subject: string; heading: strin
   },
 };
 
-/** Null for statuses customers aren't emailed about (e.g. back to pending). */
+const PAYMENT_COPY = {
+  subject: 'Pago confirmado · pedido #{n}',
+  heading: 'Hemos recibido tu pago',
+  message: 'El pago de tu pedido <strong>#{n}</strong> está confirmado. ¡Gracias!',
+};
+
+/** Null for statuses customers aren't emailed about (e.g. back to received). */
 export function statusChangeEmail(order: OrderDetails, status: OrderStatus) {
   const copy = STATUS_COPY[status];
-  if (!copy) return null;
+  return copy ? orderUpdateEmail(order, copy) : null;
+}
+
+export function paymentConfirmedEmail(order: OrderDetails) {
+  return orderUpdateEmail(order, PAYMENT_COPY);
+}
+
+function orderUpdateEmail(order: OrderDetails, copy: { subject: string; heading: string; message: string }) {
   const fill = (template: string) => template.replace(/\{n\}/g, String(order.order_number));
   const html = layout(
     copy.heading,
@@ -324,13 +332,28 @@ export function statusChangeEmail(order: OrderDetails, status: OrderStatus) {
 
 /** Emails the customer the order's new status. */
 export async function sendStatusChangeEmail(order: Order): Promise<void> {
+  const details = order as unknown as OrderDetails;
+  await sendToCustomer(details, () => statusChangeEmail(details, order.status), 'status change');
+}
+
+/** Tells the customer their payment was received. */
+export async function sendPaymentConfirmedEmail(order: Order): Promise<void> {
+  const details = order as unknown as OrderDetails;
+  await sendToCustomer(details, () => paymentConfirmedEmail(details), 'payment confirmed');
+}
+
+/** Never throws: a failed email must not fail the change that triggered it. */
+async function sendToCustomer(
+  details: OrderDetails,
+  build: () => { subject: string; html: string; text: string } | null,
+  kind: string,
+): Promise<void> {
   try {
-    const details = order as unknown as OrderDetails;
-    const email = statusChangeEmail(details, order.status);
+    const email = build();
     if (!email || !details.contact_email) return;
     const settings = await getSettings();
     await sendEmail({ to: details.contact_email, replyTo: settings.contact_email ?? undefined, ...email });
   } catch (error) {
-    console.error('Could not send the status change email', error);
+    console.error(`Could not send the ${kind} email`, error);
   }
 }

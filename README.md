@@ -169,8 +169,9 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Profile created on first sign in (from `user_metadata.full_name`), as the user | `profiles.ts` |
 | Cart: one per user, lines merged per variant + customization, max 99, stock checked, customization required only for customizable products | `cart.ts` |
 | Checkout: prices re-read from the catalog, stock reserved per variant across lines, shipping from settings, order written, ordered lines removed from the cart. If a step fails, the order is deleted and the stock given back | `orders.ts` |
-| Status changes: only applied if the order still has the status that was read (so two changes can't both win), logged with who/when, `paid_at` / `shipped_at` stamped, cancelling restores stock, cancelled orders are final | `orders.ts` |
-| Customers cancel only their own *pending* orders; admins any order | `orders.ts` |
+| Status changes: only applied if the order still has the status that was read (so two changes can't both win), logged with who/when, `shipped_at` stamped, cancelled orders are final. Statuses: received → processing → shipped → delivered, or cancelled | `orders.ts` |
+| Payment is not a status: `paid_at` (null = not paid), set by hand from the admin order page (`{paid: true\|false}`) and later by the payment gateway. Marking an order paid emails the customer | `orders.ts`, `orderEmails.ts` |
+| Customers cancel only their own orders that are still *received* and not paid; admins any order | `orders.ts` |
 | Stock: compare-and-swap updates (`… where stock = <value read>`, retried), so concurrent checkouts can't oversell | `stock.ts` |
 | Duplicating a product: the copy is hidden until reviewed, its variants have no SKU (SKUs are unique), and stored photos are copied, so deleting either product never removes the other's files. A failed copy is deleted again | `products.ts`, `images.ts` |
 | Products saved with their variants; slug, SKUs and variant ownership validated before writing anything | `products.ts` |
@@ -183,7 +184,8 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
 | New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
-| Status change: the customer gets an email for paid, in preparation, shipped, delivered and cancelled (not for going back to pending) | `orders.ts`, `orderEmails.ts` |
+| Status change: the customer gets an email for in preparation, shipped, delivered and cancelled (not for going back to received), and another when the order is marked paid | `orders.ts`, `orderEmails.ts` |
+| Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
 | Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
 | Password change: needs the current password, except within an hour of opening a recovery link. Supabase then ends every session of the user, so the API returns a new one for this device. Deleting the account also asks for the password | `sessions.ts`, `profiles.ts` |
 
@@ -209,6 +211,9 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…09_move_to_dona_galleta_schema.sql`: moves every table and type from
      `public` to the `dona_galleta` schema, where the API reads them
      (`DB_SCHEMA` in `server/supabase.ts`).
+   - `…10_payment_apart_from_status.sql`: payment leaves the order statuses
+     (`pending` / `paid` become `received`, delivered orders are marked paid)
+     and is kept in `paid_at`.
 
    All but the first are safe to run more than once. Once `…09` has run, don't
    re-run the earlier ones (they would create empty tables in `public` again);
@@ -428,8 +433,8 @@ How it works:
 
 The API emails the shop's mailbox (the contact email in *Administración → Ajustes*)
 and every admin when an order is placed (besides the push notification).
-It emails the customer when they place it and whenever its status changes: paid, in
-preparation, shipped, delivered, cancelled. It sends plain SMTP through the shop's
+It emails the customer when they place it and whenever its status changes (in
+preparation, shipped, delivered, cancelled) or it is marked paid. It sends plain SMTP through the shop's
 Gmail account. Without `SMTP_HOST`, nothing is sent and everything else works.
 
 1. The Gmail account needs **2-Step Verification**. Then, in
@@ -521,9 +526,10 @@ needs the admin role.
 | PATCH / DELETE | `/api/cart/items/:id` | Set `{quantity}` (0 removes) / remove. |
 | POST | `/api/checkout` | Place an order from the cart. |
 | GET | `/api/orders`, `/api/orders/:id` | Own orders (admins can open any order). |
-| POST | `/api/orders/:id/cancel` | Cancel a pending order. |
-| GET | `/api/admin/orders?status=` | All orders. |
-| PATCH | `/api/admin/orders/:id` | `{status?, admin_notes?}`. |
+| POST | `/api/orders/:id/cancel` | Cancel an order that is still received and not paid (admins: any order). |
+| GET | `/api/admin/orders?status=&paid=` | All orders; `status` takes one or several (`delivered,cancelled`), `paid` is `true` or `false`. |
+| GET | `/api/admin/orders/summary?period=month\|quarter\|year\|all` | Figures for the *Resumen* page. |
+| PATCH | `/api/admin/orders/:id` | `{status?, paid?, admin_notes?}`. |
 | POST | `/api/devices` | Register an app install for push notifications: `{fid, platform: "android"}`. With a session it is linked to that user, without one to nobody. |
 | POST | `/api/admin/devices` | The same, for older app builds (admins only). |
 | GET / POST | `/api/admin/categories` | All categories (including inactive, with `product_count`) / create `{name, slug, parent_id, description, is_active}`. |

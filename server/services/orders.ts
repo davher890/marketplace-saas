@@ -4,10 +4,11 @@ import type { AuthUser } from '../auth';
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap, type DbClient } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
-import { sendStatusChangeEmail } from './orderEmails';
+import { sendPaymentConfirmedEmail, sendStatusChangeEmail } from './orderEmails';
 import { DELIVERY_METHODS, getSettings, isSpanishPostalCode, shippingFor } from './settings';
 
-export const ORDER_STATUSES = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
+/** Fulfilment only: whether the order is paid is `paid_at` (null = not paid). */
+export const ORDER_STATUSES = ['received', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export type Order = Record<string, unknown> & {
@@ -34,11 +35,13 @@ function sortNested(order: Order): Order {
 
 export async function listOrders(
   db: DbClient,
-  filter: { userId?: string; status?: OrderStatus } = {},
+  filter: { userId?: string; statuses?: OrderStatus[]; paid?: boolean } = {},
 ): Promise<Order[]> {
   let query = db.from('orders').select('*, order_items(*)');
   if (filter.userId) query = query.eq('user_id', filter.userId);
-  if (filter.status) query = query.eq('status', filter.status);
+  if (filter.statuses?.length) query = query.in('status', filter.statuses);
+  if (filter.paid === true) query = query.not('paid_at', 'is', null);
+  if (filter.paid === false) query = query.is('paid_at', null);
   const rows = unwrap(await query.order('created_at', { ascending: false }).limit(500)) as Order[];
   return rows.map(sortNested);
 }
@@ -122,7 +125,7 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
         .from('orders')
         .insert({
           user_id: user.id,
-          status: 'pending',
+          status: 'received',
           subtotal_cents: subtotal,
           shipping_cents: shipping,
           total_cents: subtotal + shipping,
@@ -157,7 +160,7 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
       ).error,
     );
 
-    await recordStatusChange(order.id, null, 'pending', user.id);
+    await recordStatusChange(order.id, null, 'received', user.id);
   } catch (error) {
     // Undo what was done so far: the order (its lines cascade).
     if (orderId) await admin.from('orders').delete().eq('id', orderId);
@@ -201,7 +204,6 @@ async function transition(order: Order, to: OrderStatus, actorId: string): Promi
   if (order.status === 'cancelled') throw conflict('Cancelled orders cannot change status');
 
   const changes: Record<string, unknown> = { status: to, updated_at: now() };
-  if (to === 'paid' && !order.paid_at) changes.paid_at = now();
   if (to === 'shipped' && !order.shipped_at) changes.shipped_at = now();
 
   const updated = unwrap(
@@ -218,10 +220,12 @@ async function transition(order: Order, to: OrderStatus, actorId: string): Promi
   return true;
 }
 
-/** Customers may cancel their own pending orders; admins can cancel any order. */
+/** Customers may cancel their own order until it is paid or started; admins can cancel any order. */
 export async function cancelOrder(user: AuthUser, orderId: string, admin: boolean): Promise<Order> {
   const order = await getOrderFor(user, orderId, admin);
-  if (!admin && order.status !== 'pending') throw conflict('Only pending orders can be cancelled');
+  if (!admin && (order.status !== 'received' || order.paid_at)) {
+    throw conflict('Only orders not yet paid or started can be cancelled');
+  }
   const changed = await transition(order, 'cancelled', user.id);
   const updated = (await getOrder(supabaseAdmin(), orderId))!;
   if (changed) await sendStatusChangeEmail(updated);
@@ -231,9 +235,11 @@ export async function cancelOrder(user: AuthUser, orderId: string, admin: boolea
 export const adminUpdateOrderSchema = z
   .object({
     status: z.enum(ORDER_STATUSES).optional(),
+    /** Marks the order as paid (now) or not paid. */
+    paid: z.boolean().optional(),
     admin_notes: z.string().trim().max(2000).nullable().optional(),
   })
-  .refine((body) => body.status !== undefined || body.admin_notes !== undefined, {
+  .refine((body) => body.status !== undefined || body.paid !== undefined || body.admin_notes !== undefined, {
     message: 'Nothing to update',
   });
 
@@ -247,6 +253,17 @@ export async function adminUpdateOrder(
   if (!order) throw notFound('Order not found');
 
   const changed = input.status ? await transition(order, input.status, admin.id) : false;
+  const markedPaid = input.paid !== undefined && input.paid !== Boolean(order.paid_at) ? input.paid : null;
+  if (markedPaid !== null) {
+    check(
+      (
+        await db
+          .from('orders')
+          .update({ paid_at: markedPaid ? now() : null, updated_at: now() })
+          .eq('id', orderId)
+      ).error,
+    );
+  }
   if (input.admin_notes !== undefined) {
     check(
       (
@@ -260,11 +277,22 @@ export async function adminUpdateOrder(
   const updated = (await getOrder(db, orderId))!;
   // Awaited so it finishes before Vercel freezes the function; never throws.
   if (changed) await sendStatusChangeEmail(updated);
+  if (markedPaid) await sendPaymentConfirmedEmail(updated);
   return updated;
 }
 
-export function parseStatus(value: string | null): OrderStatus | undefined {
+/** `?paid=true` / `?paid=false`; anything else means both. */
+export function parsePaid(value: string | null): boolean | undefined {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+/** `?status=shipped` or several separated by commas: `?status=delivered,cancelled`. */
+export function parseStatuses(value: string | null): OrderStatus[] | undefined {
   if (value === null || value === '') return undefined;
-  if (!(ORDER_STATUSES as readonly string[]).includes(value)) throw badRequest(`Unknown status "${value}"`);
-  return value as OrderStatus;
+  return value.split(',').map((status) => {
+    if (!(ORDER_STATUSES as readonly string[]).includes(status)) throw badRequest(`Unknown status "${status}"`);
+    return status as OrderStatus;
+  });
 }

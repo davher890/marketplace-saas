@@ -5,6 +5,7 @@ import * as cart from './services/cart';
 import * as catalog from './services/catalog';
 import * as categories from './services/categories';
 import * as orderEmails from './services/orderEmails';
+import * as orderSummary from './services/orderSummary';
 import * as orders from './services/orders';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
@@ -121,7 +122,15 @@ export const router = new Router()
   // --- Admin: orders --------------------------------------------------------
   .get('/api/admin/orders', async ({ request, query }) => {
     await requireAdmin(request);
-    return orders.listOrders(supabaseAdmin(), { status: orders.parseStatus(query.get('status')) });
+    return orders.listOrders(supabaseAdmin(), {
+      statuses: orders.parseStatuses(query.get('status')),
+      paid: orders.parsePaid(query.get('paid')),
+    });
+  })
+  // Counts per status, sales per month and best sellers for the "Resumen" page.
+  .get('/api/admin/orders/summary', async ({ request, query }) => {
+    await requireAdmin(request);
+    return orderSummary.getOrderSummary(orderSummary.parsePeriod(query.get('period')));
   })
   .patch('/api/admin/orders/:id', async ({ request, params }) => {
     const admin = await requireAdmin(request);
