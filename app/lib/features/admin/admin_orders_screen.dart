@@ -5,30 +5,66 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../models/order.dart';
+import '../../models/order_stats.dart';
 import '../../repositories/order_repository.dart';
 import '../../widgets/common.dart';
 import '../orders/order_widgets.dart';
 
-class AdminOrdersScreen extends ConsumerStatefulWidget {
-  const AdminOrdersScreen({super.key});
+/// Admin order list, split into orders in progress and finished ones. The
+/// view and status filter live in the URL (`?vista=historicos&estado=delivered`)
+/// so the "Resumen" page can link to a filtered list.
+class AdminOrdersScreen extends ConsumerWidget {
+  const AdminOrdersScreen({super.key, this.view = OrderView.open, this.status});
+
+  final OrderView view;
+
+  /// Only this status of [view]; `null` for all of them.
+  final OrderStatus? status;
+
+  /// URL of the list showing [view] (by default, the one [status] belongs
+  /// to), filtered by [status].
+  static String location({OrderView? view, OrderStatus? status}) {
+    final shown =
+        view ?? (status == null ? OrderView.open : OrderView.of(status));
+    final query = {
+      if (shown != OrderView.open) 'vista': shown.urlValue,
+      if (status != null) 'estado': status.name,
+    };
+    return Uri(
+      path: '/admin/orders',
+      queryParameters: query.isEmpty ? null : query,
+    ).toString();
+  }
 
   @override
-  ConsumerState<AdminOrdersScreen> createState() => _AdminOrdersScreenState();
-}
-
-class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
-  OrderStatus? _filter;
-
-  @override
-  Widget build(BuildContext context) {
-    final orders = ref.watch(adminOrdersProvider(_filter));
+  Widget build(BuildContext context, WidgetRef ref) {
+    // A status from another view (an old link) is ignored.
+    final filter = (
+      view: view,
+      status: status != null && view.statuses.contains(status) ? status : null,
+    );
+    final orders = ref.watch(adminOrdersProvider(filter));
 
     return RefreshIndicator(
-      onRefresh: () => ref.refresh(adminOrdersProvider(_filter).future),
+      onRefresh: () => ref.refresh(adminOrdersProvider(filter).future),
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text('Pedidos', style: Theme.of(context).textTheme.displaySmall),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<OrderView>(
+              segments: [
+                for (final v in OrderView.values)
+                  ButtonSegment(value: v, label: Text(v.label)),
+              ],
+              selected: {view},
+              showSelectedIcon: false,
+              onSelectionChanged: (selected) =>
+                  context.go(location(view: selected.single)),
+            ),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -36,27 +72,30 @@ class _AdminOrdersScreenState extends ConsumerState<AdminOrdersScreen> {
             children: [
               ChoiceChip(
                 label: const Text('Todos'),
-                selected: _filter == null,
+                selected: filter.status == null,
                 labelStyle: TextStyle(
-                  color: _filter == null ? AppColors.cream : AppColors.ink,
+                  color: filter.status == null
+                      ? AppColors.cream
+                      : AppColors.ink,
                 ),
-                onSelected: (_) => setState(() => _filter = null),
+                onSelected: (_) => context.go(location(view: view)),
               ),
-              for (final status in OrderStatus.values)
+              for (final s in view.statuses)
                 ChoiceChip(
-                  label: Text(status.label),
-                  selected: _filter == status,
+                  label: Text(s.label),
+                  selected: filter.status == s,
                   labelStyle: TextStyle(
-                    color: _filter == status ? AppColors.cream : AppColors.ink,
+                    color: filter.status == s ? AppColors.cream : AppColors.ink,
                   ),
-                  onSelected: (_) => setState(() => _filter = status),
+                  onSelected: (_) =>
+                      context.go(location(view: view, status: s)),
                 ),
             ],
           ),
           const SizedBox(height: 16),
           AsyncView(
             value: orders,
-            onRetry: () => ref.invalidate(adminOrdersProvider(_filter)),
+            onRetry: () => ref.invalidate(adminOrdersProvider(filter)),
             builder: (orders) => orders.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(32),
@@ -106,6 +145,7 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
   void _refreshLists() {
     ref.invalidate(orderProvider(widget.orderId));
     ref.invalidate(adminOrdersProvider);
+    ref.invalidate(adminOrderStatsProvider);
   }
 
   Future<void> _run(
@@ -149,6 +189,14 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
     await _run(
       () => ref.read(orderRepositoryProvider).updateStatus(order.id, status),
       'Estado actualizado: ${status.label}',
+    );
+  }
+
+  Future<void> _setPaid(Order order, bool paid) async {
+    if (paid == order.isPaid) return;
+    await _run(
+      () => ref.read(orderRepositoryProvider).updatePaid(order.id, paid),
+      paid ? 'Marcado como pagado' : 'Marcado como sin pagar',
     );
   }
 
@@ -222,6 +270,22 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
                           ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Pagado'),
+                      subtitle: Text(
+                        order.isPaid
+                            ? 'Desde el ${dateFormat.format(order.paidAt!)}'
+                            : 'Al marcarlo, se avisa al cliente por email.',
+                      ),
+                      value: order.isPaid,
+                      onChanged: _saving
+                          ? null
+                          : (paid) => _setPaid(order, paid),
+                    ),
+                    const Divider(height: 1),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _notes,

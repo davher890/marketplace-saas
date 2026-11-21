@@ -1,6 +1,6 @@
+/// Where the order is in its fulfilment. Payment is separate: [Order.paidAt].
 enum OrderStatus {
-  pending('Pendiente de pago'),
-  paid('Pagado'),
+  received('Recibido'),
   processing('En preparación'),
   shipped('Enviado'),
   delivered('Entregado'),
@@ -13,7 +13,7 @@ enum OrderStatus {
 
   static OrderStatus fromName(String name) => OrderStatus.values.firstWhere(
     (s) => s.name == name,
-    orElse: () => OrderStatus.pending,
+    orElse: () => OrderStatus.received,
   );
 }
 
@@ -89,6 +89,7 @@ class Order {
     this.shippingPhone,
     this.customerNotes,
     this.adminNotes,
+    this.paidAt,
     this.items = const [],
     this.history = const [],
   });
@@ -108,10 +109,19 @@ class Order {
   final String? customerNotes;
   final String? adminNotes;
   final DateTime createdAt;
+
+  /// When it was marked paid; `null` while not paid.
+  final DateTime? paidAt;
   final List<OrderItem> items;
   final List<OrderStatusChange> history;
 
   bool get isPickup => deliveryMethod == DeliveryMethod.pickup;
+
+  bool get isPaid => paidAt != null;
+
+  /// Customers can cancel until the order is paid or started (the API checks
+  /// the same).
+  bool get canCustomerCancel => status == OrderStatus.received && !isPaid;
 
   int get itemCount => items.fold(0, (sum, item) => sum + item.quantity);
 
@@ -158,6 +168,9 @@ class Order {
     customerNotes: json['customer_notes'] as String?,
     adminNotes: json['admin_notes'] as String?,
     createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
+    paidAt: json['paid_at'] == null
+        ? null
+        : DateTime.parse(json['paid_at'] as String).toLocal(),
     items: (json['order_items'] as List? ?? [])
         .map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
         .toList(),

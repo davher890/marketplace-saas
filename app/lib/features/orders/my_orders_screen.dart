@@ -111,13 +111,18 @@ class OrderDetailScreen extends ConsumerWidget {
                   ),
                 ),
               const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OrderStatusChip(order.status),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OrderStatusChip(order.status),
+                  if (order.status != OrderStatus.cancelled)
+                    PaymentChip(paid: order.isPaid),
+                ],
               ),
               const SizedBox(height: 16),
               OrderSummary(order: order),
-              if (order.status == OrderStatus.pending) ...[
+              if (order.canCustomerCancel) ...[
                 const SizedBox(height: 16),
                 OutlinedButton(
                   onPressed: () => cancel(order),

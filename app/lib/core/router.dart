@@ -7,6 +7,7 @@ import '../features/admin/admin_orders_screen.dart';
 import '../features/admin/admin_products_screen.dart';
 import '../features/admin/admin_settings_screen.dart';
 import '../features/admin/admin_shell.dart';
+import '../features/admin/admin_summary_screen.dart';
 import '../features/admin/product_form_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/reset_password_screen.dart';
@@ -19,6 +20,8 @@ import '../features/checkout/checkout_screen.dart';
 import '../features/orders/my_orders_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/shell/store_shell.dart';
+import '../models/order.dart';
+import '../models/order_stats.dart';
 import '../repositories/catalog_repository.dart';
 import '../repositories/profile_repository.dart';
 import 'auth.dart';
@@ -51,7 +54,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         // RLS is the real guard; this only keeps customers out of the UI.
         final isAdmin = await ref.read(isAdminProvider.future);
         if (!isAdmin) return '/';
-        if (path == '/admin') return '/admin/orders';
+        if (path == '/admin') return '/admin/summary';
       }
       return null;
     },
@@ -101,7 +104,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             _fadePage(state, AdminShell(child: child)),
         routes: [
           _adminRoute('/admin', (_) => const SizedBox.shrink()),
-          _adminRoute('/admin/orders', (_) => const AdminOrdersScreen()),
+          _adminRoute('/admin/summary', (_) => const AdminSummaryScreen()),
+          _adminRoute(
+            '/admin/orders',
+            (state) => AdminOrdersScreen(
+              view: OrderView.fromUrl(state.uri.queryParameters['vista']),
+              status: OrderStatus.values
+                  .asNameMap()[state.uri.queryParameters['estado']],
+            ),
+          ),
           _adminRoute(
             '/admin/orders/:id',
             (state) => AdminOrderScreen(orderId: state.pathParameters['id']!),

@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 Order _order() => Order.fromJson({
   'id': 'o1',
   'order_number': 1004,
-  'status': 'paid',
+  'status': 'processing',
   'subtotal_cents': 6800,
   'shipping_cents': 600,
   'total_cents': 7400,

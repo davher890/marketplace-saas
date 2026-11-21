@@ -28,11 +28,11 @@ void main() {
   test('sends JSON with method, path and query', () async {
     late http.Request sent;
     final api = clientReturning(200, [], onRequest: (r) => sent = r);
-    await api.get('/api/admin/orders', query: {'status': 'paid'});
+    await api.get('/api/admin/orders', query: {'status': 'shipped'});
     expect(sent.method, 'GET');
     expect(
       sent.url.toString(),
-      'https://shop.test/api/admin/orders?status=paid',
+      'https://shop.test/api/admin/orders?status=shipped',
     );
 
     await api.patch('/api/cart/items/1', {'quantity': 2});
@@ -94,13 +94,54 @@ void main() {
     expect(cart.subtotalCents, 2400);
   });
 
+  test('admin order list filters by statuses and payment', () async {
+    late http.Request sent;
+    final repository = OrderRepository(
+      clientReturning(200, [], onRequest: (r) => sent = r),
+    );
+    await repository.fetchAllOrders(
+      statuses: [OrderStatus.received, OrderStatus.shipped],
+      paid: false,
+    );
+    expect(sent.url.queryParameters, {
+      'status': 'received,shipped',
+      'paid': 'false',
+    });
+
+    await repository.fetchAllOrders();
+    expect(sent.url.query, isEmpty);
+  });
+
+  test('marking an order paid sends only the payment flag', () async {
+    late http.Request sent;
+    final order = await OrderRepository(
+      clientReturning(200, {
+        'id': 'o1',
+        'order_number': 1000,
+        'status': 'processing',
+        'subtotal_cents': 2400,
+        'shipping_cents': 0,
+        'total_cents': 2400,
+        'shipping_name': 'Ana',
+        'shipping_address': {},
+        'paid_at': '2026-11-21T10:00:00.000Z',
+        'created_at': '2026-11-20T16:00:00.000Z',
+      }, onRequest: (r) => sent = r),
+    ).updatePaid('o1', true);
+    expect(sent.method, 'PATCH');
+    expect(sent.url.path, '/api/admin/orders/o1');
+    expect(jsonDecode(sent.body), {'paid': true});
+    expect(order.isPaid, isTrue);
+    expect(order.canCustomerCancel, isFalse);
+  });
+
   test('checkout sends snake_case fields and parses the order', () async {
     late http.Request sent;
     final api = clientReturning(201, {
       'order': {
         'id': 'o1',
         'order_number': 1000,
-        'status': 'pending',
+        'status': 'received',
         'subtotal_cents': 2400,
         'shipping_cents': 495,
         'total_cents': 2895,
@@ -115,7 +156,7 @@ void main() {
         'order_status_history': [
           {
             'from_status': null,
-            'to_status': 'pending',
+            'to_status': 'received',
             'created_at': '2026-11-04T16:00:00.123456+00:00',
           },
         ],
@@ -137,8 +178,11 @@ void main() {
     expect(body['shipping_name'], 'Ana');
     expect(body['shipping_address']['postal_code'], '28001');
     expect(order.orderNumber, 1000);
-    expect(order.status, OrderStatus.pending);
-    expect(order.history.single.toStatus, OrderStatus.pending);
+    expect(order.status, OrderStatus.received);
+    expect(order.history.single.toStatus, OrderStatus.received);
+    // New orders aren't paid, so the customer can still cancel them.
+    expect(order.isPaid, isFalse);
+    expect(order.canCustomerCancel, isTrue);
   });
 
   test('pickup orders send no address and read back as pickup', () async {
@@ -147,7 +191,7 @@ void main() {
       'order': {
         'id': 'o2',
         'order_number': 1001,
-        'status': 'pending',
+        'status': 'received',
         'subtotal_cents': 2400,
         'shipping_cents': 0,
         'total_cents': 2400,

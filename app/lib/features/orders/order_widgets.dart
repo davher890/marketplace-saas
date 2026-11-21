@@ -35,7 +35,17 @@ class OrderTile extends StatelessWidget {
           'Pedido #${order.orderNumber}',
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(subtitle),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(subtitle),
+            // Cancelled orders don't need paying.
+            if (order.status != OrderStatus.cancelled) ...[
+              const SizedBox(height: 6),
+              PaymentChip(paid: order.isPaid),
+            ],
+          ],
+        ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,

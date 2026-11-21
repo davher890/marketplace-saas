@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
 import '../models/order.dart';
+import '../models/order_stats.dart';
 import 'api_client.dart';
 
 class CheckoutRequest {
@@ -50,14 +51,31 @@ class OrderRepository {
   Future<List<Order>> fetchMyOrders() async =>
       parseList(await _api.get('/api/orders'), Order.fromJson);
 
-  /// Every order (admin only), optionally filtered by status.
-  Future<List<Order>> fetchAllOrders({OrderStatus? status}) async => parseList(
-    await _api.get(
-      '/api/admin/orders',
-      query: status == null ? null : {'status': status.name},
-    ),
-    Order.fromJson,
-  );
+  /// Every order (admin only), optionally only those in [statuses] and
+  /// paid or not ([paid]).
+  Future<List<Order>> fetchAllOrders({
+    List<OrderStatus>? statuses,
+    bool? paid,
+  }) async {
+    final query = {
+      if (statuses != null && statuses.isNotEmpty)
+        'status': statuses.map((s) => s.name).join(','),
+      if (paid != null) 'paid': '$paid',
+    };
+    return parseList(
+      await _api.get('/api/admin/orders', query: query.isEmpty ? null : query),
+      Order.fromJson,
+    );
+  }
+
+  /// Counts and sales for the admin "Resumen" page.
+  Future<OrderStats> fetchStats(SummaryPeriod period) async =>
+      OrderStats.fromJson(
+        await _api.get(
+          '/api/admin/orders/summary',
+          query: {'period': period.name},
+        ),
+      );
 
   /// Customers get their own orders; admins any order.
   Future<Order?> fetchOrder(String id) async {
@@ -78,6 +96,11 @@ class OrderRepository {
         await _api.patch('/api/admin/orders/$orderId', {'status': status.name}),
       );
 
+  /// Admin only. Marking it paid emails the customer.
+  Future<Order> updatePaid(String orderId, bool paid) async => Order.fromJson(
+    await _api.patch('/api/admin/orders/$orderId', {'paid': paid}),
+  );
+
   /// Admin only.
   Future<Order> updateAdminNotes(String orderId, String notes) async =>
       Order.fromJson(
@@ -95,13 +118,26 @@ final myOrdersProvider = FutureProvider<List<Order>>((ref) {
   return ref.watch(orderRepositoryProvider).fetchMyOrders();
 });
 
-/// All orders for the admin panel, optionally filtered by status.
-final adminOrdersProvider = FutureProvider.family<List<Order>, OrderStatus?>((
-  ref,
-  status,
-) {
-  return ref.watch(orderRepositoryProvider).fetchAllOrders(status: status);
-});
+/// Orders for the admin panel: those in [view], or only one [status] of it.
+final adminOrdersProvider =
+    FutureProvider.family<List<Order>, ({OrderView view, OrderStatus? status})>(
+      (ref, filter) {
+        return ref
+            .watch(orderRepositoryProvider)
+            .fetchAllOrders(
+              statuses: filter.status == null
+                  ? filter.view.statuses
+                  : [filter.status!],
+              paid: filter.view.paid,
+            );
+      },
+    );
+
+/// Figures for the admin "Resumen" page.
+final adminOrderStatsProvider =
+    FutureProvider.family<OrderStats, SummaryPeriod>((ref, period) {
+      return ref.watch(orderRepositoryProvider).fetchStats(period);
+    });
 
 final orderProvider = FutureProvider.family<Order?, String>((ref, id) {
   return ref.watch(orderRepositoryProvider).fetchOrder(id);

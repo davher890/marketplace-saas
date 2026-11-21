@@ -156,8 +156,7 @@ class OrderStatusChip extends StatelessWidget {
   final OrderStatus status;
 
   static Color colorOf(OrderStatus status) => switch (status) {
-    OrderStatus.pending => const Color(0xFFE8C872),
-    OrderStatus.paid => const Color(0xFF9CC5A1),
+    OrderStatus.received => const Color(0xFFE8C872),
     OrderStatus.processing => const Color(0xFFA8C5DA),
     OrderStatus.shipped => const Color(0xFFB9A8DA),
     OrderStatus.delivered => AppColors.sage,
@@ -179,6 +178,47 @@ class OrderStatusChip extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: AppColors.ink,
         ),
+      ),
+    );
+  }
+}
+
+/// "Pagado" / "Sin pagar", next to the [OrderStatusChip].
+class PaymentChip extends StatelessWidget {
+  const PaymentChip({super.key, required this.paid});
+
+  final bool paid;
+
+  static const paidColor = Color(0xFF9CC5A1);
+  static const unpaidColor = Color(0xFFE59A6B);
+
+  @override
+  Widget build(BuildContext context) {
+    final color = paid ? paidColor : unpaidColor;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1.5),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            paid ? Icons.check : Icons.schedule,
+            size: 14,
+            color: AppColors.ink,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            paid ? 'Pagado' : 'Sin pagar',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.ink,
+            ),
+          ),
+        ],
       ),
     );
   }
