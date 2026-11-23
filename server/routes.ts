@@ -1,10 +1,11 @@
 import { isAdmin, optionalUser, requireAdmin, requireUser } from './auth';
-import { readBody, Reply } from './http';
+import { corsHeaders, readBody, Reply } from './http';
 import { Router } from './router';
 import * as cart from './services/cart';
 import * as catalog from './services/catalog';
 import * as categories from './services/categories';
 import * as orderEmails from './services/orderEmails';
+import * as orderExport from './services/orderExport';
 import * as orderSummary from './services/orderSummary';
 import * as orders from './services/orders';
 import * as products from './services/products';
@@ -131,6 +132,11 @@ export const router = new Router()
   .get('/api/admin/orders/summary', async ({ request, query }) => {
     await requireAdmin(request);
     return orderSummary.getOrderSummary(orderSummary.parsePeriod(query.get('period')));
+  })
+  // A month's orders as a CSV file (Excel in Spanish), from the "Resumen" page.
+  .get('/api/admin/orders/export', async ({ request, query }) => {
+    await requireAdmin(request);
+    return orderExport.monthOrdersCsvResponse(orderExport.parseMonth(query.get('month')), corsHeaders(request));
   })
   .patch('/api/admin/orders/:id', async ({ request, params }) => {
     const admin = await requireAdmin(request);

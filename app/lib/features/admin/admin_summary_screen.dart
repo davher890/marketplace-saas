@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/file_saver.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../models/order_stats.dart';
@@ -331,56 +332,95 @@ class _Totals extends StatelessWidget {
   }
 }
 
-class _MonthsTable extends StatelessWidget {
+/// Orders, cancellations and billing per month, each row with a button to
+/// download that month's orders as a CSV file (opens in Excel).
+class _MonthsTable extends ConsumerStatefulWidget {
   const _MonthsTable(this.months);
 
   final List<MonthSummary> months;
+
+  @override
+  ConsumerState<_MonthsTable> createState() => _MonthsTableState();
+}
+
+class _MonthsTableState extends ConsumerState<_MonthsTable> {
+  /// Months being downloaded right now.
+  final _downloading = <String>{};
+
+  Future<void> _download(MonthSummary month) async {
+    setState(() => _downloading.add(month.month));
+    try {
+      final bytes = await ref
+          .read(orderRepositoryProvider)
+          .exportMonth(month.month);
+      await ref.read(fileSaverProvider)(
+        bytes,
+        'pedidos-${month.month}.csv',
+        'text/csv',
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, describeError(error));
+    } finally {
+      if (mounted) setState(() => _downloading.remove(month.month));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final header = textTheme.labelLarge?.copyWith(color: AppColors.cocoa);
 
-    TableRow row(List<String> cells, {TextStyle? style, Color? color}) =>
-        TableRow(
-          decoration: BoxDecoration(color: color),
-          children: [
-            for (final (index, cell) in cells.indexed)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: Text(
-                  cell,
-                  style: style,
-                  textAlign: index == 0 ? TextAlign.start : TextAlign.end,
-                ),
-              ),
-          ],
-        );
+    Widget cell(String text, {TextStyle? style, bool first = false}) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Text(
+        text,
+        style: style,
+        textAlign: first ? TextAlign.start : TextAlign.end,
+      ),
+    );
 
     return Card(
       child: Table(
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         columnWidths: const {
           0: FlexColumnWidth(2.2),
           1: FlexColumnWidth(),
           2: FlexColumnWidth(1.2),
           3: FlexColumnWidth(1.6),
+          4: FixedColumnWidth(48),
         },
         children: [
-          row(
-            const ['Mes', 'Pedidos', 'Cancel.', 'Facturado'],
-            style: header,
-            color: AppColors.cream,
+          TableRow(
+            decoration: const BoxDecoration(color: AppColors.cream),
+            children: [
+              cell('Mes', style: header, first: true),
+              cell('Pedidos', style: header),
+              cell('Cancel.', style: header),
+              cell('Facturado', style: header),
+              const SizedBox.shrink(),
+            ],
           ),
-          for (final month in months)
-            row([
-              month.label,
-              '${month.orders}',
-              '${month.cancelled}',
-              formatCents(month.revenueCents),
-            ]),
+          for (final month in widget.months)
+            TableRow(
+              children: [
+                cell(month.label, first: true),
+                cell('${month.orders}'),
+                cell('${month.cancelled}'),
+                cell(formatCents(month.revenueCents)),
+                _downloading.contains(month.month)
+                    ? const Center(
+                        child: SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: 'Descargar los pedidos de ${month.label}',
+                        icon: const Icon(Icons.download_outlined),
+                        onPressed: () => _download(month),
+                      ),
+              ],
+            ),
         ],
       ),
     );
