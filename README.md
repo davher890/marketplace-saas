@@ -59,6 +59,7 @@ cd app
 flutter devices                                                # find the device id
 flutter build apk --release --dart-define-from-file=env.json   # → build/app/outputs/flutter-apk/app-release.apk
 flutter install -d <device-id>
+flutter install --release
 ```
 
 - Rebuild after every code change or `env.json` change: the values are baked into the APK.
