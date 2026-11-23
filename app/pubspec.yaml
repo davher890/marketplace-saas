@@ -49,6 +49,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   web: ^1.1.1
   supabase_flutter: ^2.18.3
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

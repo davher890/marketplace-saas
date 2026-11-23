@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
@@ -67,6 +68,10 @@ class OrderRepository {
       Order.fromJson,
     );
   }
+
+  /// The orders placed in [month] ("2026-11") as a CSV file (admin only).
+  Future<Uint8List> exportMonth(String month) =>
+      _api.getBytes('/api/admin/orders/export', query: {'month': month});
 
   /// Counts and sales for the admin "Resumen" page.
   Future<OrderStats> fetchStats(SummaryPeriod period) async =>

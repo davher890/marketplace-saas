@@ -1,13 +1,19 @@
+import 'dart:convert';
+
+import 'package:dona_galleta/core/file_saver.dart';
 import 'package:dona_galleta/core/money.dart';
 import 'package:dona_galleta/features/admin/admin_orders_screen.dart';
 import 'package:dona_galleta/features/admin/admin_summary_screen.dart';
 import 'package:dona_galleta/models/order.dart';
 import 'package:dona_galleta/models/order_stats.dart';
+import 'package:dona_galleta/repositories/api_client.dart';
 import 'package:dona_galleta/repositories/order_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 Map<String, dynamic> _statsJson({int orders = 3}) => {
   'period': 'month',
@@ -85,12 +91,33 @@ void main() {
 
   group('Resumen page', () {
     late List<SummaryPeriod> requested;
+    late List<Uri> exportRequests;
+    late List<({String fileName, String text, String mimeType})> saved;
+    late int exportStatus;
 
     Future<GoRouter> pump(WidgetTester tester, {double width = 1200}) async {
       tester.view.physicalSize = Size(width, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       requested = [];
+      exportRequests = [];
+      saved = [];
+      final api = ApiClient(
+        baseUrl: 'https://shop.test',
+        httpClient: MockClient((request) async {
+          exportRequests.add(request.url);
+          return exportStatus == 200
+              ? http.Response.bytes(
+                  utf8.encode('\uFEFFPedido;Fecha\r\n1004;01/11/2026\r\n'),
+                  200,
+                  headers: {'content-type': 'text/csv; charset=utf-8'},
+                )
+              : http.Response(
+                  '{"error": "Admin access required"}',
+                  exportStatus,
+                );
+        }),
+      );
       final router = GoRouter(
         initialLocation: '/admin/summary',
         routes: [
@@ -115,6 +142,14 @@ void main() {
                     ? _statsJson(orders: 0)
                     : _statsJson(),
               );
+            }),
+            orderRepositoryProvider.overrideWithValue(OrderRepository(api)),
+            fileSaverProvider.overrideWithValue((bytes, fileName, mime) async {
+              saved.add((
+                fileName: fileName,
+                text: utf8.decode(bytes),
+                mimeType: mime,
+              ));
             }),
           ],
           child: MaterialApp.router(routerConfig: router),
@@ -165,6 +200,36 @@ void main() {
       expect(find.text('No hay pedidos en este periodo.'), findsOneWidget);
       // Orders in progress are still shown.
       expect(find.text(OrderStatus.received.label), findsOneWidget);
+    });
+
+    testWidgets('each month downloads its orders as CSV', (tester) async {
+      exportStatus = 200;
+      await pump(tester);
+      await tester.tap(
+        find.byTooltip('Descargar los pedidos de Noviembre 2026'),
+      );
+      await tester.pumpAndSettle();
+      expect(exportRequests.single.path, '/api/admin/orders/export');
+      expect(exportRequests.single.queryParameters, {'month': '2026-11'});
+      expect(saved.single.fileName, 'pedidos-2026-11.csv');
+      expect(saved.single.mimeType, 'text/csv');
+      expect(saved.single.text, contains('1004;01/11/2026'));
+    });
+
+    testWidgets('a failed download says why', (tester) async {
+      exportStatus = 403;
+      await pump(tester);
+      await tester.tap(
+        find.byTooltip('Descargar los pedidos de Noviembre 2026'),
+      );
+      await tester.pumpAndSettle();
+      expect(saved, isEmpty);
+      expect(find.text('Admin access required'), findsOneWidget);
+      // The button is back, to try again.
+      expect(
+        find.byTooltip('Descargar los pedidos de Noviembre 2026'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('fits a phone screen', (tester) async {

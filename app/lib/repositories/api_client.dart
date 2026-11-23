@@ -73,9 +73,35 @@ class ApiClient {
   Future<dynamic> delete(String path, [Object? body]) =>
       _send('DELETE', path, body: body);
 
+  /// GET of a file (e.g. a CSV export): its raw bytes.
+  Future<Uint8List> getBytes(String path, {Map<String, String>? query}) async {
+    final response = await _execute('GET', path, query: query);
+    _throwIfError(response);
+    return response.bodyBytes;
+  }
+
   /// Sends the request and returns the decoded JSON body (`null` for 204).
-  /// After a 401 it renews the session once and tries again.
   Future<dynamic> _send(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+    String? bearer,
+  }) async {
+    final response = await _execute(
+      method,
+      path,
+      body: body,
+      query: query,
+      bearer: bearer,
+    );
+    _throwIfError(response);
+    return response.body.isEmpty ? null : jsonDecode(response.body);
+  }
+
+  /// Sends the request with the session's token. After a 401 it renews the
+  /// session once and tries again.
+  Future<http.Response> _execute(
     String method,
     String path, {
     Object? body,
@@ -91,17 +117,25 @@ class ApiClient {
         response = await _request(method, path, body, query, renewed);
       }
     }
+    return response;
+  }
 
-    final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
-    if (response.statusCode >= 400) {
-      final error = decoded is Map ? decoded['error'] as String? : null;
-      throw ApiException(
-        error ?? 'Unexpected error (${response.statusCode})',
-        statusCode: response.statusCode,
-        code: decoded is Map ? decoded['code'] as String? : null,
-      );
+  /// Turns an error response (`{"error": ..., "code": ...}`) into an
+  /// [ApiException].
+  void _throwIfError(http.Response response) {
+    if (response.statusCode < 400) return;
+    Object? decoded;
+    try {
+      decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+    } on FormatException {
+      decoded = null;
     }
-    return decoded;
+    final error = decoded is Map ? decoded['error'] as String? : null;
+    throw ApiException(
+      error ?? 'Unexpected error (${response.statusCode})',
+      statusCode: response.statusCode,
+      code: decoded is Map ? decoded['code'] as String? : null,
+    );
   }
 
   Future<http.Response> _request(

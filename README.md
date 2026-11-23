@@ -185,7 +185,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Shipping: flat rate, free above a threshold | `settings.ts` |
 | New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
 | Status change: the customer gets an email for in preparation, shipped, delivered and cancelled (not for going back to received), and another when the order is marked paid | `orders.ts`, `orderEmails.ts` |
-| Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
+| Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone, each month downloadable as a CSV file: a browser download on the web, the share sheet on Android) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
 | Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
 | Password change: needs the current password, except within an hour of opening a recovery link. Supabase then ends every session of the user, so the API returns a new one for this device. Deleting the account also asks for the password | `sessions.ts`, `profiles.ts` |
 
@@ -529,6 +529,7 @@ needs the admin role.
 | POST | `/api/orders/:id/cancel` | Cancel an order that is still received and not paid (admins: any order). |
 | GET | `/api/admin/orders?status=&paid=` | All orders; `status` takes one or several (`delivered,cancelled`), `paid` is `true` or `false`. |
 | GET | `/api/admin/orders/summary?period=month\|quarter\|year\|all` | Figures for the *Resumen* page. |
+| GET | `/api/admin/orders/export?month=2026-11` | That month's orders (Spain's calendar) as a CSV file for Excel in Spanish: one row per order, `;` between columns, decimal commas, UTF-8 with BOM. Text a customer typed that starts with `=`, `+`, `-` or `@` gets a leading `'` so Excel doesn't treat it as a formula. |
 | PATCH | `/api/admin/orders/:id` | `{status?, paid?, admin_notes?}`. |
 | POST | `/api/devices` | Register an app install for push notifications: `{fid, platform: "android"}`. With a session it is linked to that user, without one to nobody. |
 | POST | `/api/admin/devices` | The same, for older app builds (admins only). |
