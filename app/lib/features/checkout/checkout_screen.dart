@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/money.dart';
 import '../../core/auth.dart';
+import '../../core/online_payment.dart';
 import '../../models/order.dart';
 import '../../models/shop_settings.dart';
 import '../../repositories/cart_repository.dart';
@@ -35,6 +36,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _province = TextEditingController();
   final _notes = TextEditingController();
   DeliveryMethod _delivery = DeliveryMethod.shipping;
+
+  /// Pay now with Stripe (when offered) or agree the payment with the shop.
+  bool _payNow = true;
   bool _submitting = false;
 
   bool get _pickup => _delivery == DeliveryMethod.pickup;
@@ -70,7 +74,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   String? _nullIfEmpty(TextEditingController c) =>
       c.text.trim().isEmpty ? null : c.text.trim();
 
-  Future<void> _placeOrder() async {
+  Future<void> _placeOrder({required bool payNow}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
     try {
@@ -96,6 +100,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           );
       ref.invalidate(cartProvider);
       ref.invalidate(myOrdersProvider);
+      if (payNow) {
+        try {
+          await payOnline(ref, order.id);
+          return;
+        } catch (error) {
+          // The order exists: show it, with the button to try paying again.
+          if (mounted) showMessage(context, describeError(error));
+        }
+      }
       if (mounted) context.go('/orders/${order.id}?placed=1');
     } catch (error) {
       if (mounted) showMessage(context, describeError(error));
@@ -108,6 +121,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final settings = ref.watch(shopSettingsProvider).value;
+    final canPayOnline = ref.watch(canPayOnlineProvider).value ?? false;
 
     Widget field(
       TextEditingController c,
@@ -282,19 +296,54 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       ),
                     ),
                   ),
+                  if (canPayOnline) ...[
+                    const SectionTitle('Pago'),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(
+                          value: true,
+                          icon: Icon(Icons.credit_card),
+                          label: Text('Pagar ahora'),
+                        ),
+                        ButtonSegment(
+                          value: false,
+                          icon: Icon(Icons.chat_bubble_outline),
+                          label: Text('Acordarlo con la tienda'),
+                        ),
+                      ],
+                      selected: {_payNow},
+                      onSelectionChanged: (selection) =>
+                          setState(() => _payNow = selection.single),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _payNow
+                          ? 'Tarjeta, Bizum, Apple Pay o Google Pay, en la página segura de Stripe.'
+                          : 'Te escribiremos para acordar cómo pagar.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   FilledButton(
-                    onPressed: _submitting ? null : _placeOrder,
+                    onPressed: _submitting
+                        ? null
+                        : () => _placeOrder(payNow: canPayOnline && _payNow),
                     child: _submitting
                         ? const SizedBox.square(
                             dimension: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Realizar pedido'),
+                        : Text(
+                            canPayOnline && _payNow
+                                ? 'Realizar pedido y pagar'
+                                : 'Realizar pedido',
+                          ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Te contactaremos para confirmar el pago y los detalles de la personalización.',
+                  Text(
+                    canPayOnline && _payNow
+                        ? 'Te contactaremos para confirmar los detalles de la personalización.'
+                        : 'Te contactaremos para confirmar el pago y los detalles de la personalización.',
                     textAlign: TextAlign.center,
                   ),
                 ],

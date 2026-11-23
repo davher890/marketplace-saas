@@ -90,6 +90,7 @@ class Order {
     this.customerNotes,
     this.adminNotes,
     this.paidAt,
+    this.paidVia,
     this.items = const [],
     this.history = const [],
   });
@@ -112,6 +113,9 @@ class Order {
 
   /// When it was marked paid; `null` while not paid.
   final DateTime? paidAt;
+
+  /// How it was paid: `manual` (marked in the admin panel) or `stripe`.
+  final String? paidVia;
   final List<OrderItem> items;
   final List<OrderStatusChange> history;
 
@@ -171,6 +175,7 @@ class Order {
     paidAt: json['paid_at'] == null
         ? null
         : DateTime.parse(json['paid_at'] as String).toLocal(),
+    paidVia: json['paid_via'] as String?,
     items: (json['order_items'] as List? ?? [])
         .map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
         .toList(),

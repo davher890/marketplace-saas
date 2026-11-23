@@ -8,6 +8,7 @@ import * as orderEmails from './services/orderEmails';
 import * as orderExport from './services/orderExport';
 import * as orderSummary from './services/orderSummary';
 import * as orders from './services/orders';
+import * as payments from './services/payments';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
 import * as push from './services/push';
@@ -108,6 +109,12 @@ export const router = new Router()
     const user = await requireUser(request);
     return orders.cancelOrder(user, params.id, await isAdmin(user));
   })
+  // Online payment: a Stripe Checkout page for one of the user's unpaid orders.
+  .post('/api/orders/:id/pay', async ({ request, params }) =>
+    payments.createCheckout(await requireUser(request), params.id, request),
+  )
+  // Called by Stripe (signed), not by the app.
+  .post('/api/stripe/webhook', async ({ request }) => payments.handleStripeWebhook(request))
 
   // --- Push notification devices (any app install, signed in or not) --------
   .post('/api/devices', async ({ request }) => {

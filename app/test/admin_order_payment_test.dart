@@ -87,7 +87,7 @@ void main() {
       {'paid': true},
     ]);
     expect(tester.widget<SwitchListTile>(paidSwitch).value, isTrue);
-    expect(find.textContaining('Desde el 21/11/2026'), findsOneWidget);
+    expect(find.textContaining('Marcado a mano el 21/11/2026'), findsOneWidget);
 
     await tester.tap(paidSwitch);
     await tester.pumpAndSettle();

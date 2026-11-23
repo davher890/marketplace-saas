@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dona_galleta/core/auth.dart';
 import 'package:dona_galleta/core/money.dart';
+import 'package:dona_galleta/core/online_payment.dart';
 import 'package:dona_galleta/features/checkout/checkout_screen.dart';
 import 'package:dona_galleta/models/cart.dart';
 import 'package:dona_galleta/models/shop_settings.dart';
@@ -82,6 +83,7 @@ void main() {
             ),
           ),
           orderRepositoryProvider.overrideWithValue(OrderRepository(api)),
+          canPayOnlineProvider.overrideWith((ref) async => false),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),

@@ -60,6 +60,8 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
     super.dispose();
   }
 
+  late bool _onlinePaymentPublic = widget.settings.onlinePaymentPublic;
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -77,6 +79,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
               contactPhone: _phone.text.trim().isEmpty
                   ? null
                   : _phone.text.trim(),
+              onlinePaymentPublic: _onlinePaymentPublic,
             ),
           );
       ref.invalidate(shopSettingsProvider);
@@ -148,6 +151,17 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
             decoration: const InputDecoration(
               labelText: 'Teléfono de contacto',
             ),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Pago online para todos los clientes'),
+            subtitle: const Text(
+              'Tarjeta, Bizum… con Stripe. Mientras esté desactivado, solo '
+              'los administradores ven «Pagar ahora».',
+            ),
+            value: _onlinePaymentPublic,
+            onChanged: (value) => setState(() => _onlinePaymentPublic = value),
           ),
           const SizedBox(height: 24),
           Align(

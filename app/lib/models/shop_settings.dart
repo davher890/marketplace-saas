@@ -7,6 +7,7 @@ class ShopSettings {
     this.freeShippingThresholdCents,
     this.contactEmail,
     this.contactPhone,
+    this.onlinePaymentPublic = false,
   });
 
   /// Shipping outside Madrid (and to Madrid when there's no Madrid rate).
@@ -19,6 +20,9 @@ class ShopSettings {
   final int? freeShippingThresholdCents;
   final String? contactEmail;
   final String? contactPhone;
+
+  /// Customers see "Pagar ahora" (Stripe); while false only admins do.
+  final bool onlinePaymentPublic;
 
   static const fallback = ShopSettings(shippingFlatCents: 0);
 
@@ -44,6 +48,7 @@ class ShopSettings {
     freeShippingThresholdCents: json['free_shipping_threshold_cents'] as int?,
     contactEmail: json['contact_email'] as String?,
     contactPhone: json['contact_phone'] as String?,
+    onlinePaymentPublic: json['online_payment_public'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -52,6 +57,7 @@ class ShopSettings {
     'free_shipping_threshold_cents': freeShippingThresholdCents,
     'contact_email': contactEmail,
     'contact_phone': contactPhone,
+    'online_payment_public': onlinePaymentPublic,
   };
 }
 
