@@ -3,6 +3,7 @@ import { corsHeaders, readBody, Reply } from './http';
 import { Router } from './router';
 import * as cart from './services/cart';
 import * as catalog from './services/catalog';
+import * as coupons from './services/coupons';
 import * as categories from './services/categories';
 import * as orderEmails from './services/orderEmails';
 import * as orderExport from './services/orderExport';
@@ -109,6 +110,13 @@ export const router = new Router()
     // never throw, so a failed notification or email doesn't fail the checkout.
     await Promise.all([push.notifyAdminsOfOrder(order), orderEmails.sendNewOrderEmails(order)]);
     return new Reply({ order }, 201);
+  })
+  // The customer applies a discount code: is it usable, and what does it give?
+  // The discount itself is worked out again when the order is placed.
+  .post('/api/checkout/coupon', async ({ request }) => {
+    const user = await requireUser(request);
+    const { code } = await readBody(request, coupons.applyCouponSchema);
+    return coupons.publicCoupon(await coupons.usableCoupon(user, code));
   })
   .get('/api/orders', async ({ request }) => {
     const user = await requireUser(request);
@@ -230,6 +238,25 @@ export const router = new Router()
     await requireAdmin(request);
     await products.deleteImage(params.id);
     return new Reply(null, 204);
+  })
+
+  // --- Admin: coupons -------------------------------------------------------
+  .get('/api/admin/coupons', async ({ request }) => {
+    await requireAdmin(request);
+    return coupons.listCoupons();
+  })
+  .post('/api/admin/coupons', async ({ request }) => {
+    await requireAdmin(request);
+    return new Reply(await coupons.createCoupon(await readBody(request, coupons.couponSchema)), 201);
+  })
+  .put('/api/admin/coupons/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    return coupons.updateCoupon(params.id, await readBody(request, coupons.couponSchema));
+  })
+  .patch('/api/admin/coupons/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    const { is_active } = await readBody(request, coupons.patchCouponSchema);
+    return coupons.setCouponActive(params.id, is_active);
   })
 
   // --- Admin: settings ------------------------------------------------------

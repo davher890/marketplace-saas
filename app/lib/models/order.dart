@@ -84,6 +84,8 @@ class Order {
     required this.shippingAddress,
     required this.createdAt,
     this.deliveryMethod = DeliveryMethod.shipping,
+    this.discountCents = 0,
+    this.couponCode,
     this.userId,
     this.contactEmail,
     this.shippingPhone,
@@ -100,6 +102,10 @@ class Order {
   final OrderStatus status;
   final int subtotalCents;
   final int shippingCents;
+
+  /// Taken off by the coupon [couponCode]; 0 without one.
+  final int discountCents;
+  final String? couponCode;
   final int totalCents;
   final String? contactEmail;
   final String shippingName;
@@ -157,6 +163,8 @@ class Order {
     status: OrderStatus.fromName(json['status'] as String),
     subtotalCents: json['subtotal_cents'] as int,
     shippingCents: json['shipping_cents'] as int,
+    discountCents: json['discount_cents'] as int? ?? 0,
+    couponCode: json['coupon_code'] as String?,
     totalCents: json['total_cents'] as int,
     contactEmail: json['contact_email'] as String?,
     shippingName: json['shipping_name'] as String,

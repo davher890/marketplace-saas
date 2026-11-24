@@ -97,6 +97,14 @@ const _errorMessages = {
   'refresh_token_not_found': 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
   'refresh_token_already_used':
       'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+  'coupon_not_found': 'Ese código de descuento no existe.',
+  'coupon_inactive': 'Ese código de descuento ya no está disponible.',
+  'coupon_not_started': 'Ese código de descuento todavía no se puede usar.',
+  'coupon_expired': 'Ese código de descuento ha caducado.',
+  'coupon_already_used': 'Ya has usado este código de descuento.',
+  'coupon_not_applicable':
+      'Ese código de descuento no se aplica a este pedido.',
+  'coupon_code_taken': 'Ya hay un cupón con ese código.',
 };
 
 /// Human readable message for API / network errors.

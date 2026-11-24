@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
 import '../models/category.dart';
+import '../models/coupon.dart';
 import '../models/product.dart';
 import '../models/shop_settings.dart';
 import 'api_client.dart';
@@ -143,6 +144,27 @@ class AdminRepository {
     await _api.delete('/api/admin/products/$productId');
   }
 
+  /// Every coupon, newest first, with its status today and its uses.
+  Future<List<Coupon>> fetchCoupons() async =>
+      parseList(await _api.get('/api/admin/coupons'), Coupon.fromJson);
+
+  /// Creates the coupon (when [couponId] is null) or updates it. Refused
+  /// (409, `coupon_code_taken`) when another coupon has the same code.
+  Future<Coupon> saveCoupon(Coupon coupon, {String? couponId}) async {
+    final json = couponId == null
+        ? await _api.post('/api/admin/coupons', coupon.toJson())
+        : await _api.put('/api/admin/coupons/$couponId', coupon.toJson());
+    return Coupon.fromJson(json as Map<String, dynamic>);
+  }
+
+  Future<Coupon> setCouponActive(String couponId, bool isActive) async =>
+      Coupon.fromJson(
+        await _api.patch('/api/admin/coupons/$couponId', {
+              'is_active': isActive,
+            })
+            as Map<String, dynamic>,
+      );
+
   Future<ShopSettings> saveSettings(ShopSettings settings) async =>
       ShopSettings.fromJson(
         await _api.put('/api/admin/settings', settings.toJson()),
@@ -177,6 +199,11 @@ final productsWithoutPhotoProvider = FutureProvider<List<Product>>((ref) async {
 final adminCategoriesProvider = FutureProvider<List<Category>>((ref) {
   ref.watch(currentUserProvider);
   return ref.watch(adminRepositoryProvider).fetchAllCategories();
+});
+
+final adminCouponsProvider = FutureProvider<List<Coupon>>((ref) {
+  ref.watch(currentUserProvider);
+  return ref.watch(adminRepositoryProvider).fetchCoupons();
 });
 
 final adminProductProvider = FutureProvider.autoDispose

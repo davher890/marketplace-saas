@@ -37,6 +37,8 @@ export type ExportOrder = {
   shipping_address: Record<string, string> | null;
   subtotal_cents: number;
   shipping_cents: number;
+  discount_cents?: number;
+  coupon_code?: string | null;
   total_cents: number;
   customer_notes: string | null;
   admin_notes: string | null;
@@ -96,6 +98,8 @@ const HEADER = [
   'Unidades',
   'Subtotal (€)',
   'Envío (€)',
+  'Cupón',
+  'Descuento (€)',
   'Total (€)',
   'Notas del cliente',
   'Notas internas',
@@ -138,6 +142,8 @@ export function ordersCsv(orders: ExportOrder[]): string {
         items.reduce((sum, item) => sum + item.quantity, 0),
         formatEuros(order.subtotal_cents),
         formatEuros(order.shipping_cents),
+        order.coupon_code ?? '',
+        formatEuros(order.discount_cents ?? 0),
         formatEuros(order.total_cents),
         order.customer_notes ?? '',
         order.admin_notes ?? '',
@@ -159,7 +165,7 @@ export async function monthOrders(month: string, db: DbClient = supabaseAdmin())
     await db
       .from('orders')
       .select(
-        'order_number, status, created_at, paid_at, delivery_method, shipping_name, contact_email, shipping_phone, shipping_address, subtotal_cents, shipping_cents, total_cents, customer_notes, admin_notes, order_items(product_name, variant_name, quantity, customization, created_at)',
+        'order_number, status, created_at, paid_at, delivery_method, shipping_name, contact_email, shipping_phone, shipping_address, subtotal_cents, shipping_cents, coupon_code, discount_cents, total_cents, customer_notes, admin_notes, order_items(product_name, variant_name, quantity, customization, created_at)',
       )
       .gte('created_at', from)
       .lt('created_at', to)

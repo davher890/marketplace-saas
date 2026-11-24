@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
+import '../models/coupon.dart';
 import '../models/order.dart';
 import '../models/order_stats.dart';
 import 'api_client.dart';
@@ -14,6 +15,7 @@ class CheckoutRequest {
     this.shippingPhone,
     this.contactEmail,
     this.customerNotes,
+    this.couponCode,
   });
 
   final String shippingName;
@@ -25,6 +27,9 @@ class CheckoutRequest {
   final String? contactEmail;
   final String? customerNotes;
 
+  /// Discount code; the API checks it again and works out the discount.
+  final String? couponCode;
+
   Map<String, dynamic> toJson() => {
     'delivery_method': deliveryMethod.name,
     'shipping_name': shippingName,
@@ -33,6 +38,7 @@ class CheckoutRequest {
     'shipping_phone': shippingPhone,
     'contact_email': contactEmail,
     'customer_notes': customerNotes,
+    if (couponCode != null) 'coupon_code': couponCode,
   };
 }
 
@@ -47,6 +53,13 @@ class OrderRepository {
     final json = await _api.post('/api/checkout', request.toJson());
     return Order.fromJson((json as Map<String, dynamic>)['order']);
   }
+
+  /// Checks a discount code for the current customer. Throws an
+  /// [ApiException] whose code says why it can't be used (`coupon_expired`...).
+  Future<Coupon> applyCoupon(String code) async => Coupon.fromJson(
+    await _api.post('/api/checkout/coupon', {'code': code})
+        as Map<String, dynamic>,
+  );
 
   /// The current customer's own orders.
   Future<List<Order>> fetchMyOrders() async =>

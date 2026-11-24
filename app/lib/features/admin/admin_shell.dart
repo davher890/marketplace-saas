@@ -30,6 +30,11 @@ class AdminShell extends ConsumerWidget {
       icon: Icons.category_outlined,
       label: 'Categorías',
     ),
+    (
+      path: '/admin/coupons',
+      icon: Icons.local_offer_outlined,
+      label: 'Cupones',
+    ),
     (path: '/admin/settings', icon: Icons.settings_outlined, label: 'Ajustes'),
   ];
 
