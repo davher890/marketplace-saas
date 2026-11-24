@@ -155,10 +155,13 @@ async function findVariant(user: AuthUser, variantId: string): Promise<Available
   return variant as AvailableVariant;
 }
 
+/** Room for long texts, e.g. the ten names of a pack of ten baubles. */
+export const MAX_CUSTOMIZATION_LENGTH = 500;
+
 export const addItemSchema = z.object({
   variant_id: z.uuid(),
   quantity: z.number().int().min(1).max(MAX_LINE_QUANTITY).default(1),
-  customization: z.string().trim().max(60).default(''),
+  customization: z.string().trim().max(MAX_CUSTOMIZATION_LENGTH).default(''),
   /** The value picked in each of the product's choice lists, by list name. */
   choices: z.record(z.string().max(60), z.string().trim().max(60)).default({}),
 });

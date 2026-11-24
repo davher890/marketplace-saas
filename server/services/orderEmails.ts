@@ -110,7 +110,7 @@ function itemsHtml(order: OrderDetails): string {
     .map((item) => {
       const variant = item.variant_name && item.variant_name !== 'Default' ? ` · ${escapeHtml(item.variant_name)}` : '';
       const custom = item.customization
-        ? `<br><span style="color:#7a6a63">Personalización: ${escapeHtml(item.customization)}</span>`
+        ? `<br><span style="color:#7a6a63;white-space:pre-line">Personalización: ${escapeHtml(item.customization)}</span>`
         : '';
       return `<tr>
         <td style="padding:8px 0;border-bottom:1px solid #e6dcd8">${item.quantity} × ${escapeHtml(item.product_name)}${variant}${custom}</td>
@@ -135,7 +135,9 @@ function itemsText(order: OrderDetails): string {
   const discount = discountLine(order);
   const lines = (order.order_items ?? []).map((item) => {
     const variant = item.variant_name && item.variant_name !== 'Default' ? ` (${item.variant_name})` : '';
-    const custom = item.customization ? `\n    Personalización: ${item.customization}` : '';
+    const custom = item.customization
+      ? `\n    Personalización: ${item.customization.replace(/\n/g, '\n      ')}`
+      : '';
     return `- ${item.quantity} × ${item.product_name}${variant}: ${money(item.unit_price_cents * item.quantity)}${custom}`;
   });
   return [

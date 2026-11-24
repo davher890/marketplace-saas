@@ -204,11 +204,17 @@ class _ProductDetailState extends ConsumerState<_ProductDetail> {
           const SizedBox(height: 16),
         ],
         if (product.isCustomizable) ...[
+          // Room for long texts, e.g. the ten names of a pack of ten baubles.
           TextField(
             controller: _customization,
-            maxLength: 60,
+            maxLength: 500,
+            minLines: 3,
+            maxLines: 8,
+            keyboardType: TextInputType.multiline,
+            textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               labelText: product.customizationLabel ?? 'Personalización',
+              alignLabelWithHint: true,
             ),
           ),
           const SizedBox(height: 8),
