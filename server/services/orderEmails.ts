@@ -39,6 +39,9 @@ interface OrderDetails {
   customer_notes: string | null;
   subtotal_cents: number;
   shipping_cents: number;
+  /** Missing on orders read before coupons existed: no discount. */
+  discount_cents?: number;
+  coupon_code?: string | null;
   total_cents: number;
   order_items?: OrderItem[];
 }
@@ -78,6 +81,13 @@ function shippingLabel(order: OrderDetails): string {
   return order.shipping_cents === 0 ? 'Envío (gratis)' : 'Envío';
 }
 
+/** "Descuento (NAVIDAD10)" and the amount off, or null when there's none. */
+function discountLine(order: OrderDetails): { label: string; cents: number } | null {
+  const cents = order.discount_cents ?? 0;
+  if (cents <= 0) return null;
+  return { label: order.coupon_code ? `Descuento (${order.coupon_code})` : 'Descuento', cents };
+}
+
 function addressLines(order: OrderDetails): string[] {
   if (isPickup(order)) {
     return [order.shipping_name, order.shipping_phone ? `Tel. ${order.shipping_phone}` : null].filter(
@@ -108,6 +118,7 @@ function itemsHtml(order: OrderDetails): string {
       </tr>`;
     })
     .join('');
+  const discount = discountLine(order);
   const total = (label: string, cents: number, bold = false) =>
     `<tr><td style="padding:4px 0;${bold ? 'font-weight:bold' : ''}">${label}</td>
       <td style="padding:4px 0;text-align:right;${bold ? 'font-weight:bold' : ''}">${money(cents)}</td></tr>`;
@@ -115,11 +126,13 @@ function itemsHtml(order: OrderDetails): string {
     ${rows}
     ${total('Subtotal', order.subtotal_cents)}
     ${total(shippingLabel(order), order.shipping_cents)}
+    ${discount ? total(escapeHtml(discount.label), -discount.cents) : ''}
     ${total('Total', order.total_cents, true)}
   </table>`;
 }
 
 function itemsText(order: OrderDetails): string {
+  const discount = discountLine(order);
   const lines = (order.order_items ?? []).map((item) => {
     const variant = item.variant_name && item.variant_name !== 'Default' ? ` (${item.variant_name})` : '';
     const custom = item.customization ? `\n    Personalización: ${item.customization}` : '';
@@ -131,6 +144,7 @@ function itemsText(order: OrderDetails): string {
     isPickup(order)
       ? 'Envío: recogida en tienda (gratis)'
       : `Envío: ${order.shipping_cents === 0 ? 'gratis' : money(order.shipping_cents)}`,
+    ...(discount ? [`${discount.label}: ${money(-discount.cents)}`] : []),
     `Total: ${money(order.total_cents)}`,
   ].join('\n');
 }

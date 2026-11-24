@@ -123,6 +123,13 @@ class OrderSummary extends StatelessWidget {
                       ? 'Gratis'
                       : formatCents(order.shippingCents),
                 ),
+                if (order.discountCents > 0)
+                  row(
+                    order.couponCode == null
+                        ? 'Descuento'
+                        : 'Descuento (${order.couponCode})',
+                    '-${formatCents(order.discountCents)}',
+                  ),
                 row('Total', formatCents(order.totalCents), bold: true),
               ],
             ),

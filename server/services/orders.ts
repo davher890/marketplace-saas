@@ -4,6 +4,7 @@ import type { AuthUser } from '../auth';
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap, type DbClient } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
+import { orderDiscount, usableCoupon } from './coupons';
 import { sendPaymentConfirmedEmail, sendStatusChangeEmail } from './orderEmails';
 import { DELIVERY_METHODS, getSettings, isSpanishPostalCode, shippingFor } from './settings';
 
@@ -91,6 +92,8 @@ export const checkoutSchema = z
     contact_email: z.email().max(200).nullish(),
     customer_notes: text(1000).nullish(),
     shipping_address: addressSchema.nullish(),
+    /** Discount code typed by the customer; checked again here. */
+    coupon_code: text(60).nullish(),
   })
   .superRefine((input, ctx) => {
     if (input.delivery_method === 'shipping' && !input.shipping_address) {
@@ -102,8 +105,9 @@ export const checkoutSchema = z
  * Turns the user's cart into an order.
  *
  * Prices come from the catalog (read with the user's client), never from the
- * request. Stock isn't tracked, so nothing is reserved. Without database
- * transactions, if writing the lines fails the order is deleted again.
+ * request, and so does the coupon's discount. Stock isn't tracked, so
+ * nothing is reserved. Without database transactions, if writing the lines
+ * fails the order is deleted again.
  */
 export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutSchema>): Promise<Order> {
   const { lines, removed } = await loadCartLines(user);
@@ -116,6 +120,8 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
     method: input.delivery_method,
     postalCode: input.shipping_address?.postal_code,
   });
+  const coupon = input.coupon_code ? await usableCoupon(user, input.coupon_code) : null;
+  const discount = coupon ? orderDiscount(coupon, subtotal, shipping) : 0;
   const admin = supabaseAdmin();
   let orderId: string | null = null;
 
@@ -128,7 +134,10 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
           status: 'received',
           subtotal_cents: subtotal,
           shipping_cents: shipping,
-          total_cents: subtotal + shipping,
+          coupon_id: coupon?.id ?? null,
+          coupon_code: coupon?.code ?? null,
+          discount_cents: discount,
+          total_cents: subtotal + shipping - discount,
           contact_email: input.contact_email || user.email,
           shipping_name: input.shipping_name,
           shipping_phone: input.shipping_phone || null,

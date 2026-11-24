@@ -138,6 +138,7 @@ auth.users ─1:1─ profiles (role: customer | admin)
 categories ─N:M─ products ─1:N─ product_variants
   (tree)  (product_categories) └─1:N─ product_images
 shop_settings (single row: shipping cost, free-shipping threshold, contact)
+coupons ─1:N─ orders (coupon_id, coupon_code, discount_cents)
 ```
 
 - **Money** is stored as integer cents (EUR).
@@ -183,6 +184,7 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
 | Choice lists: every list needs a value, and it must be one of its options. The values are stored on the cart line with the custom text | `cart.ts` |
 | Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
+| Coupons: a unique code (stored in capitals, typed in any case), valid from one day to another, both included, in Spain's calendar, and switchable off. *Una vez por usuario*: each customer can use it on one order (cancelled orders don't count). *Una vez por compra*: usable on any number of orders. An order takes one coupon at most. The discount is an amount in euros, a percentage, or free shipping, and it comes off the final price (products + shipping) without going below 0. The API checks the coupon again and works out the discount when the order is placed; a coupon that gives nothing (free shipping on a pickup order) is refused. Orders keep the code and the amount (`coupon_code`, `discount_cents`, `total = subtotal + shipping - discount`), shown in the order, the emails and the CSV export | `coupons.ts`, `orders.ts` |
 | New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
 | Status change: the customer gets an email for in preparation, shipped, delivered and cancelled (not for going back to received), and another when the order is marked paid | `orders.ts`, `orderEmails.ts` |
 | Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone, each month downloadable as a CSV file: a browser download on the web, the share sheet on Android) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
@@ -214,6 +216,9 @@ shop_settings (single row: shipping cost, free-shipping threshold, contact)
    - `…10_payment_apart_from_status.sql`: payment leaves the order statuses
      (`pending` / `paid` become `received`, delivered orders are marked paid)
      and is kept in `paid_at`.
+   - `…11_online_payment.sql`: online payment (in its own pull request).
+   - `…12_coupons.sql`: discount coupons, and the coupon and discount of each
+     order.
 
    All but the first are safe to run more than once. Once `…09` has run, don't
    re-run the earlier ones (they would create empty tables in `public` again);
@@ -549,7 +554,8 @@ needs the admin role.
 | GET | `/api/cart` | Cart with nested products and totals. |
 | POST | `/api/cart/items` | Add `{variant_id, quantity, customization, choices}`. `choices` is the value picked in each choice list, by list name. |
 | PATCH / DELETE | `/api/cart/items/:id` | Set `{quantity}` (0 removes) / remove. |
-| POST | `/api/checkout` | Place an order from the cart. |
+| POST | `/api/checkout` | Place an order from the cart; `coupon_code` is optional. |
+| POST | `/api/checkout/coupon` | `{code}` → `{code, description, discount_type, amount_cents, percent}` if the customer can use it today, or 409 with a `code` saying why not (`coupon_not_found`, `coupon_inactive`, `coupon_not_started`, `coupon_expired`, `coupon_already_used`). |
 | GET | `/api/orders`, `/api/orders/:id` | Own orders (admins can open any order). |
 | POST | `/api/orders/:id/cancel` | Cancel an order that is still received and not paid (admins: any order). |
 | GET | `/api/admin/orders?status=&paid=` | All orders; `status` takes one or several (`delivered,cancelled`), `paid` is `true` or `false`. |
@@ -568,10 +574,12 @@ needs the admin role.
 | POST | `/api/admin/products/:id/images` | Register `{storage_path}` or `{url}`. |
 | DELETE | `/api/admin/images/:id` | Delete an image (and its file). |
 | PUT | `/api/admin/settings` | Update shipping and contact settings. |
+| GET / POST | `/api/admin/coupons` | Every coupon with its `status` today (`active`, `scheduled`, `expired`, `disabled`) and `uses` (orders not cancelled) / create `{code, description, starts_on, ends_on, usage: once_per_user\|once_per_order, discount_type: amount\|percent\|free_shipping, amount_cents?, percent?, is_active}`. A repeated code is refused (409, `coupon_code_taken`). |
+| PUT / PATCH | `/api/admin/coupons/:id` | Replace / toggle `{is_active}`. Coupons aren't deleted: switch them off. |
 
 Errors come back as `{"error": "..."}` with 400 (invalid input), 401, 403, 404,
 409 (business rule, e.g. out of stock) or 429 (too many attempts). Authentication
-errors also carry a `code` (`invalid_credentials`, `email_not_confirmed`,
+and coupon errors also carry a `code` (`invalid_credentials`, `email_not_confirmed`,
 `wrong_password`, `over_request_rate_limit`...) that the app turns into a message
 in Spanish.
 

@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/money.dart';
 import '../../core/auth.dart';
+import '../../models/cart.dart';
+import '../../models/coupon.dart';
 import '../../models/order.dart';
 import '../../models/shop_settings.dart';
 import '../../repositories/cart_repository.dart';
@@ -34,8 +36,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _city = TextEditingController();
   final _province = TextEditingController();
   final _notes = TextEditingController();
+  final _couponCode = TextEditingController();
   DeliveryMethod _delivery = DeliveryMethod.shipping;
   bool _submitting = false;
+
+  /// The discount code the customer applied (checked by the API).
+  Coupon? _coupon;
+  bool _applyingCoupon = false;
+  String? _couponError;
 
   bool get _pickup => _delivery == DeliveryMethod.pickup;
 
@@ -58,6 +66,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _city,
       _province,
       _notes,
+      _couponCode,
     ]) {
       c.dispose();
     }
@@ -70,8 +79,49 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   String? _nullIfEmpty(TextEditingController c) =>
       c.text.trim().isEmpty ? null : c.text.trim();
 
+  int _shippingFor(Cart cart, ShopSettings? settings) =>
+      settings?.shippingFor(
+        cart.subtotalCents,
+        pickup: _pickup,
+        postalCode: _postalCode.text,
+      ) ??
+      0;
+
+  /// What the applied coupon takes off this cart (0 without one, or when it
+  /// gives nothing, like free shipping on a pickup order).
+  int _discountFor(Cart cart, int shipping) =>
+      _coupon?.discountFor(cart.subtotalCents, shipping) ?? 0;
+
+  Future<void> _applyCoupon() async {
+    final code = _couponCode.text.trim();
+    if (code.isEmpty) return;
+    setState(() {
+      _applyingCoupon = true;
+      _couponError = null;
+    });
+    try {
+      final coupon = await ref.read(orderRepositoryProvider).applyCoupon(code);
+      if (!mounted) return;
+      setState(() {
+        _coupon = coupon;
+        _couponCode.clear();
+      });
+    } catch (error) {
+      if (mounted) setState(() => _couponError = describeError(error));
+    } finally {
+      if (mounted) setState(() => _applyingCoupon = false);
+    }
+  }
+
   Future<void> _placeOrder() async {
     if (!_formKey.currentState!.validate()) return;
+    final cart = ref.read(cartProvider).value;
+    final discount = cart == null
+        ? 0
+        : _discountFor(
+            cart,
+            _shippingFor(cart, ref.read(shopSettingsProvider).value),
+          );
     setState(() => _submitting = true);
     try {
       final order = await ref
@@ -83,6 +133,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               contactEmail: _nullIfEmpty(_email),
               shippingPhone: _nullIfEmpty(_phone),
               customerNotes: _nullIfEmpty(_notes),
+              // A coupon that gives nothing here isn't sent (the API would
+              // refuse the order).
+              couponCode: discount > 0 ? _coupon?.code : null,
               shippingAddress: _pickup
                   ? null
                   : ShippingAddress(
@@ -139,13 +192,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               child: Center(child: Text('Tu carrito está vacío.')),
             );
           }
-          final shipping =
-              settings?.shippingFor(
-                cart.subtotalCents,
-                pickup: _pickup,
-                postalCode: _postalCode.text,
-              ) ??
-              0;
+          final shipping = _shippingFor(cart, settings);
+          final discount = _discountFor(cart, shipping);
 
           return Form(
             key: _formKey,
@@ -256,6 +304,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     ),
                   ],
                   field(_notes, 'Notas para Doña Galleta', maxLines: 3),
+                  _CouponField(
+                    controller: _couponCode,
+                    coupon: _coupon,
+                    applying: _applyingCoupon,
+                    error: _couponError,
+                    notApplicable: _coupon != null && discount == 0,
+                    onApply: _applyCoupon,
+                    onRemove: () => setState(() => _coupon = null),
+                  ),
                   const SizedBox(height: 8),
                   Card(
                     child: Padding(
@@ -273,9 +330,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                             _pickup ? 'Recogida en tienda' : 'Envío',
                             shipping == 0 ? 'Gratis' : formatCents(shipping),
                           ),
+                          if (discount > 0)
+                            _Row(
+                              'Descuento (${_coupon!.code})',
+                              '-${formatCents(discount)}',
+                            ),
                           _Row(
                             'Total',
-                            formatCents(cart.subtotalCents + shipping),
+                            formatCents(
+                              cart.subtotalCents + shipping - discount,
+                            ),
                             bold: true,
                           ),
                         ],
@@ -302,6 +366,102 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// "Código de descuento" with an "Aplicar" button; once applied, the coupon
+/// with a button to remove it.
+class _CouponField extends StatelessWidget {
+  const _CouponField({
+    required this.controller,
+    required this.coupon,
+    required this.applying,
+    required this.error,
+    required this.notApplicable,
+    required this.onApply,
+    required this.onRemove,
+  });
+
+  final TextEditingController controller;
+  final Coupon? coupon;
+  final bool applying;
+  final String? error;
+
+  /// Applied, but it gives nothing on this order.
+  final bool notApplicable;
+  final VoidCallback onApply;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final coupon = this.coupon;
+    if (coupon != null) {
+      final textTheme = Theme.of(context).textTheme;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.local_offer_outlined),
+            title: Text(
+              'Cupón ${coupon.code} · ${coupon.valueLabel}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: notApplicable
+                ? Text(
+                    coupon.discountType == DiscountType.freeShipping
+                        ? 'Es de envío gratis: no cambia nada en la recogida '
+                              'en tienda.'
+                        : 'No se aplica a este pedido.',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  )
+                : coupon.description.isEmpty
+                ? null
+                : Text(coupon.description),
+            trailing: IconButton(
+              tooltip: 'Quitar cupón',
+              icon: const Icon(Icons.close),
+              onPressed: onRemove,
+            ),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Código de descuento',
+                errorText: error,
+                errorMaxLines: 2,
+              ),
+              textCapitalization: TextCapitalization.characters,
+              onSubmitted: (_) => onApply(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton(
+              onPressed: applying ? null : onApply,
+              child: applying
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Aplicar'),
+            ),
+          ),
+        ],
       ),
     );
   }

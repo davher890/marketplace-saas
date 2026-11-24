@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/admin/admin_categories_screen.dart';
+import '../features/admin/admin_coupons_screen.dart';
 import '../features/admin/admin_orders_screen.dart';
 import '../features/admin/admin_products_screen.dart';
 import '../features/admin/admin_settings_screen.dart';
@@ -135,6 +136,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             '/admin/categories',
             (_) => const AdminCategoriesScreen(),
           ),
+          _adminRoute('/admin/coupons', (_) => const AdminCouponsScreen()),
           _adminRoute('/admin/settings', (_) => const AdminSettingsScreen()),
         ],
       ),
