@@ -10,8 +10,28 @@
       "destination": "/api?__path=:path*"
     },
     {
+      "source": "/",
+      "destination": "/api?__path=seo/home"
+    },
+    {
+      "source": "/c/:slug",
+      "destination": "/api?__path=seo/c/:slug"
+    },
+    {
+      "source": "/product/:slug",
+      "destination": "/api?__path=seo/product/:slug"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api?__path=seo/robots.txt"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api?__path=seo/sitemap.xml"
+    },
+    {
       "source": "/((?!api/).*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ],
   "headers": [

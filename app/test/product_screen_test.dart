@@ -78,6 +78,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('the browser tab shows the product name', (tester) async {
+    await pumpProduct(tester, _product());
+    expect(
+      tester.widget<Title>(find.byType(Title).last).title,
+      'Chupetero · Doña Galleta',
+    );
+  });
+
   testWidgets('customers don\'t see how many units are left', (tester) async {
     await pumpProduct(tester, _product(stock: 3));
     expect(find.textContaining('Quedan'), findsNothing);

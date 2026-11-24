@@ -39,3 +39,9 @@ if [ -n "$GTM_ID" ] && ! [[ "$GTM_ID" =~ ^GTM-[A-Z0-9]+$ ]]; then
   exit 1
 fi
 sed -i.bak "s/__GTM_ID__/${GTM_ID}/" build/web/index.html && rm build/web/index.html.bak
+
+# The app page is published as app.html: Vercel serves a real index.html for
+# "/" before any rewrite, and "/" must go to the API so it can add the page's
+# title, tags and content for search engines (server/services/seo.ts).
+# vercel.json sends every other app URL to app.html.
+mv build/web/index.html build/web/app.html

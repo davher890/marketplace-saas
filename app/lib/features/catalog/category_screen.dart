@@ -34,58 +34,64 @@ class CategoryScreen extends ConsumerWidget {
     final key = (slug: slug, sort: sort);
     final products = ref.watch(categoryProductsProvider(key));
 
-    return ContentWidth(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SectionTitle(category?.name ?? ''),
-          if (category?.description != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Text(category!.description!, textAlign: TextAlign.center),
-            ),
-          if (root != null && subcategories.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  CategoryTabButton(
-                    label: 'Todo',
-                    selected: category == root,
-                    onPressed: () => context.go('/c/${root.slug}'),
-                  ),
-                  for (final sub in subcategories)
-                    CategoryTabButton(
-                      label: sub.name,
-                      selected: sub.slug == slug,
-                      onPressed: () => context.go('/c/${sub.slug}'),
-                    ),
-                ],
+    return PageTitle(
+      name: category?.name,
+      child: ContentWidth(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionTitle(category?.name ?? ''),
+            if (category?.description != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  category!.description!,
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _SortMenu(
-                sort: sort,
-                onChanged: (value) => context.go(
-                  value == ProductSort.standard
-                      ? '/c/$slug'
-                      : '/c/$slug?orden=${value.urlValue}',
+            if (root != null && subcategories.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    CategoryTabButton(
+                      label: 'Todo',
+                      selected: category == root,
+                      onPressed: () => context.go('/c/${root.slug}'),
+                    ),
+                    for (final sub in subcategories)
+                      CategoryTabButton(
+                        label: sub.name,
+                        selected: sub.slug == slug,
+                        onPressed: () => context.go('/c/${sub.slug}'),
+                      ),
+                  ],
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _SortMenu(
+                  sort: sort,
+                  onChanged: (value) => context.go(
+                    value == ProductSort.standard
+                        ? '/c/$slug'
+                        : '/c/$slug?orden=${value.urlValue}',
+                  ),
                 ),
               ),
             ),
-          ),
-          AsyncView(
-            value: products,
-            onRetry: () => ref.invalidate(categoryProductsProvider(key)),
-            builder: (items) => ProductGrid(products: items),
-          ),
-        ],
+            AsyncView(
+              value: products,
+              onRetry: () => ref.invalidate(categoryProductsProvider(key)),
+              builder: (items) => ProductGrid(products: items),
+            ),
+          ],
+        ),
       ),
     );
   }

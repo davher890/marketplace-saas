@@ -32,7 +32,10 @@ class ProductScreen extends ConsumerWidget {
                   ),
                 ),
               )
-            : _ProductDetail(product: product),
+            : PageTitle(
+                name: product.name,
+                child: _ProductDetail(product: product),
+              ),
       ),
     );
   }
