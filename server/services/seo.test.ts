@@ -7,6 +7,7 @@ import {
   formatPrice,
   homePage,
   notFoundPage,
+  pageResponse,
   productPage,
   renderPage,
   robotsTxt,
@@ -164,4 +165,27 @@ test('sitemap lists home, visible categories and products', () => {
   assert.match(xml, /\/c\/packs-bolas<\/loc>/);
   assert.doesNotMatch(xml, /huerfana/);
   assert.match(xml, /\/product\/lapices-con-nombre<\/loc><lastmod>2026-11-20<\/lastmod>/);
+});
+
+test('pageResponse: never serves a login page as the app, forwards the Vercel cookie', async (t) => {
+  const seen: Headers[] = [];
+  let reply = () => new Response('<html>Log in to Vercel</html>', { status: 200 });
+  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
+    seen.push(new Headers(init.headers));
+    assert.equal(init.redirect, 'manual');
+    return reply();
+  });
+  const request = new Request('https://preview.example/api?__path=seo/home', { headers: { cookie: '_vercel_jwt=abc' } });
+  const page = async () => notFoundPage('/x');
+
+  // Vercel's login page (or its redirect) is refused, and not kept.
+  assert.equal((await pageResponse(request, '/x', page)).status, 503);
+  reply = () => new Response(null, { status: 307, headers: { location: 'https://vercel.com/sso-api' } });
+  assert.equal((await pageResponse(request, '/x', page)).status, 503);
+
+  reply = () => new Response(SHELL, { status: 200 });
+  const response = await pageResponse(request, '/x', page);
+  assert.equal(response.status, 404);
+  assert.match(await response.text(), /Página no encontrada/);
+  assert.equal(seen.at(-1)?.get('cookie'), '_vercel_jwt=abc');
 });

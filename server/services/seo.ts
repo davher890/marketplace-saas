@@ -386,14 +386,27 @@ let cachedShell: string | undefined;
  * The built app page. `scripts/vercel-build.sh` publishes it as `app.html`
  * (not `index.html`, which Vercel would serve for `/` before any rewrite).
  * Read once per function instance: an instance belongs to one deployment.
+ *
+ * Preview deployments are behind Vercel's login, so the visitor's Vercel
+ * cookie (or bypass header) goes along; without it Vercel redirects to its
+ * login page, which must never be taken for the app page.
  */
 async function appShell(request: Request): Promise<string> {
   if (cachedShell) return cachedShell;
+  const headers = new Headers();
+  for (const name of ['cookie', 'x-vercel-protection-bypass']) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
   const response = await fetch(new URL('/app.html', new URL(request.url).origin), {
+    headers,
+    redirect: 'manual',
     signal: AbortSignal.timeout(5000),
   });
-  if (!response.ok) throw new Error(`app.html: ${response.status}`);
-  cachedShell = await response.text();
+  if (response.status !== 200) throw new Error(`app.html: ${response.status}`);
+  const text = await response.text();
+  if (!text.includes('flutter_bootstrap.js')) throw new Error('app.html is not the app page');
+  cachedShell = text;
   return cachedShell;
 }
 
