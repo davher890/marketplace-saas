@@ -9,7 +9,8 @@
     "dev:api": "node --env-file-if-exists=.env --import tsx server/dev.ts",
     "dev": "vercel dev",
     "typecheck": "tsc --noEmit",
-    "build:web": "bash scripts/vercel-build.sh"
+    "build:web": "bash scripts/vercel-build.sh",
+    "test": "node --import tsx --test server/services/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",

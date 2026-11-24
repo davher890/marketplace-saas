@@ -11,6 +11,7 @@ import * as orders from './services/orders';
 import * as products from './services/products';
 import * as profiles from './services/profiles';
 import * as push from './services/push';
+import * as seo from './services/seo';
 import * as sessions from './services/sessions';
 import * as settings from './services/settings';
 import { supabaseAdmin } from './supabase';
@@ -41,6 +42,19 @@ export const router = new Router()
   )
   .get('/api/products/:slug', async ({ params }) => catalog.getProductBySlug(params.slug))
   .get('/api/settings', async () => settings.getSettings())
+
+  // --- Shop pages for search engines (see services/seo.ts) -----------------
+  // `vercel.json` rewrites /, /c/:slug, /product/:slug, /robots.txt and
+  // /sitemap.xml to these.
+  .get('/api/seo/home', async ({ request }) => seo.pageResponse(request, '/', seo.loadHome))
+  .get('/api/seo/c/:slug', async ({ request, params }) =>
+    seo.pageResponse(request, `/c/${params.slug}`, seo.loadCategory(params.slug)),
+  )
+  .get('/api/seo/product/:slug', async ({ request, params }) =>
+    seo.pageResponse(request, `/product/${params.slug}`, seo.loadProduct(params.slug)),
+  )
+  .get('/api/seo/robots.txt', async ({ request }) => seo.robotsResponse(request))
+  .get('/api/seo/sitemap.xml', async ({ request }) => seo.sitemapResponse(request))
 
   // --- Authentication (the app never calls Supabase Auth directly) ----------
   .post('/api/auth/signup', async ({ request }) =>

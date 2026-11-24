@@ -19,6 +19,12 @@ export async function handle(request: Request): Promise<Response> {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
+  if (request.method === 'HEAD') {
+    // Crawlers and link checkers send HEAD: answer as GET, without the body.
+    const response = await handle(new Request(request.url, { method: 'GET', headers: request.headers }));
+    return new Response(null, { status: response.status, headers: response.headers });
+  }
+
   try {
     const url = new URL(request.url);
     const match = router.match(request.method, resolvePath(url));

@@ -72,7 +72,7 @@ flutter install -d <device-id>
 **Checks**:
 
 ```bash
-npm run typecheck                            # API
+npm run typecheck && npm test                # API
 cd app && flutter analyze && flutter test    # app
 ```
 
@@ -266,7 +266,7 @@ SITE_URL=https://www.xn--doagalleta-u9a.es
 | `FIREBASE_SERVICE_ACCOUNT` | Optional. Service account key JSON on one line, see [Push notifications](#6-push-notifications). Secret | API |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Optional. The mail server for order emails, see [Emails](#8-emails). `SMTP_PASSWORD` is secret | API |
 | `EMAIL_FROM` | Optional sender, e.g. `"Doña Galleta" <donagalletashop@gmail.com>`. Defaults to "Doña Galleta" and `SMTP_USER` | API |
-| `SITE_URL` | Optional. The shop's address, for the links in emails | API |
+| `SITE_URL` | Optional. The shop's address, for the links in emails and the canonical URLs, sitemap and link previews (without it, the address the request came to) | API |
 
 ```bash
 npm install
@@ -416,7 +416,7 @@ Android app has no analytics.
      count page views.
    - Click **Submit** to publish the container.
 3. **Vercel**: add `GTM_ID=GTM-…` (Production) and redeploy. `scripts/vercel-build.sh`
-   writes it into `index.html` and refuses IDs that don't look like `GTM-…`.
+   writes it into the app page (published as `app.html`) and refuses IDs that don't look like `GTM-…`.
 4. **Check it**: open the shop, accept cookies, and look at GA4 → Reports → Realtime,
    or use Tag Manager's *Preview* mode.
 
@@ -463,6 +463,31 @@ How it works:
 - Without custom SMTP, **Supabase's own emails** (confirm account, recover password)
   only reach the project's team members, at 2 per hour. With Gmail as custom SMTP in
   Authentication → Emails → SMTP Settings, they reach everyone.
+
+### 9. Search engines (SEO)
+
+The shop is a Flutter app drawn on a canvas, so on its own every URL would be the
+same empty page for Google and for link previews. The API fills in the public pages
+instead ([`server/services/seo.ts`](server/services/seo.ts)):
+
+- `vercel.json` sends `/`, `/c/:slug` and `/product/:slug` to the API. It answers with
+  the app page plus that page's title, description, canonical URL, Open Graph tags
+  (photo and price in WhatsApp or Instagram previews) and schema.org data (product,
+  price, breadcrumbs).
+- The page's content (name, price, description, links) is in the HTML as text. It
+  shows while Flutter loads and is removed on Flutter's first frame.
+- Products and categories that don't exist answer 404.
+- `/robots.txt` keeps crawlers out of the admin, cart, checkout and account pages and
+  points to `/sitemap.xml`, built from the catalog. Preview deployments answer
+  `Disallow: /`.
+- The pages are cached by Vercel for 5 minutes, so catalog changes reach them within
+  that time.
+- `scripts/vercel-build.sh` publishes the app page as `app.html`. Vercel would serve a
+  real `index.html` for `/` before any rewrite.
+
+After deploying, add the site in
+[Google Search Console](https://search.google.com/search-console) and submit
+`https://www.xn--doagalleta-u9a.es/sitemap.xml`.
 
 ## Administrators
 
@@ -553,6 +578,6 @@ in Spanish.
 ## Development
 
 ```bash
-npm run typecheck                              # API
+npm run typecheck && npm test                  # API
 cd app && flutter analyze && flutter test      # Flutter
 ```

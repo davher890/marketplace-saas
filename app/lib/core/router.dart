@@ -24,6 +24,7 @@ import '../models/order.dart';
 import '../models/order_stats.dart';
 import '../repositories/catalog_repository.dart';
 import '../repositories/profile_repository.dart';
+import '../widgets/common.dart';
 import 'auth.dart';
 import 'theme.dart';
 
@@ -61,7 +62,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       ShellRoute(
         pageBuilder: (_, state, child) =>
-            _fadePage(state, StoreShell(child: child)),
+            _fadePage(state, PageTitle(child: StoreShell(child: child))),
         routes: [
           _storeRoute('/', (_) => const HomeScreen()),
           _storeRoute(
@@ -101,7 +102,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       ShellRoute(
         pageBuilder: (_, state, child) =>
-            _fadePage(state, AdminShell(child: child)),
+            _fadePage(state, PageTitle(child: AdminShell(child: child))),
         routes: [
           _adminRoute('/admin', (_) => const SizedBox.shrink()),
           _adminRoute('/admin/summary', (_) => const AdminSummaryScreen()),

@@ -5,6 +5,29 @@ import '../core/theme.dart';
 import '../models/order.dart';
 import '../repositories/api_client.dart';
 
+const shopName = 'Doña Galleta';
+
+/// The browser tab title, "Lápices con nombre · Doña Galleta" for [name], or
+/// [full] as given. Search engines read it once the app has loaded, so it
+/// matches the title the API puts in the page (server/services/seo.ts).
+/// Pages without one show the shop's name (set around each shell in the
+/// router).
+class PageTitle extends StatelessWidget {
+  const PageTitle({super.key, this.name, this.full, required this.child});
+
+  final String? name;
+  final String? full;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final title =
+        full ??
+        (name == null || name!.isEmpty ? shopName : '$name · $shopName');
+    return Title(title: title, color: AppColors.forest, child: child);
+  }
+}
+
 /// Renders loading / error / data states of an [AsyncValue] consistently.
 class AsyncView<T> extends StatelessWidget {
   const AsyncView({
