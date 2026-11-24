@@ -133,6 +133,26 @@ void main() {
     });
   });
 
+  testWidgets('the text takes many lines: ten names for a pack of ten', (
+    tester,
+  ) async {
+    await pumpProduct(tester, _product());
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    expect(field.maxLength, 500);
+    expect(field.minLines, 3);
+
+    final names = List.generate(10, (i) => 'Nombre número ${i + 1}').join('\n');
+    await tester.enterText(find.byType(TextField).last, names);
+    await tester.tap(find.byType(DropdownMenu<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Azul').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Añadir al carrito'));
+    await tester.pumpAndSettle();
+
+    expect(cartBodies.single['customization'], names);
+  });
+
   testWidgets('one row per option picks the matching variant', (tester) async {
     Map<String, dynamic> variant(String id, String size, String material) => {
       'id': id,
