@@ -7,6 +7,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+/// Remembers closed warnings in memory instead of the device's storage.
+class _MemoryStore extends DismissedWarningsStore {
+  _MemoryStore([Map<String, Set<String>>? stored]) : stored = stored ?? {};
+
+  Map<String, Set<String>> stored;
+
+  @override
+  Future<Map<String, Set<String>>> load() async => stored;
+
+  @override
+  Future<void> save(Map<String, Set<String>> dismissed) async =>
+      stored = dismissed;
+}
+
 Product _product(String name, List<String> categories, {bool photo = true}) =>
     Product.fromJson({
       'id': name,
@@ -30,6 +44,7 @@ void main() {
     WidgetTester tester,
     List<Product> products, {
     String location = '/admin/orders',
+    DismissedWarningsStore? store,
   }) async {
     tester.view.physicalSize = const Size(1200, 1000);
     tester.view.devicePixelRatio = 1;
@@ -61,6 +76,9 @@ void main() {
         overrides: [
           adminProductsProvider.overrideWith((ref) async => products),
           adminCategoriesProvider.overrideWith((ref) async => []),
+          dismissedWarningsStoreProvider.overrideWithValue(
+            store ?? _MemoryStore(),
+          ),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -134,6 +152,57 @@ void main() {
     );
     expect(find.text('Gorro'), findsNothing);
     expect(find.text('Body'), findsWidgets);
+  });
+
+  testWidgets('a warning closes with its X and the choice is saved', (
+    tester,
+  ) async {
+    final store = _MemoryStore();
+    await pumpAdmin(tester, [_product('Body', [], photo: false)], store: store);
+    expect(find.textContaining('sin foto (Body)'), findsOneWidget);
+    expect(find.byTooltip('Cerrar aviso'), findsNWidgets(2));
+
+    // Close the photo warning only.
+    final photoWarning = find.ancestor(
+      of: find.textContaining('sin foto'),
+      matching: find.byType(Row),
+    );
+    await tester.tap(
+      find.descendant(
+        of: photoWarning.first,
+        matching: find.byTooltip('Cerrar aviso'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('sin foto'), findsNothing);
+    expect(find.textContaining('sin categoría (Body)'), findsOneWidget);
+    expect(store.stored, {
+      'without_photo': {'Body'},
+    });
+  });
+
+  final closedForBody = {
+    'without_photo': {'Body'},
+  };
+
+  testWidgets('a closed warning stays hidden for the same products', (
+    tester,
+  ) async {
+    await pumpAdmin(tester, [
+      _product('Taza', ['c1']),
+      _product('Body', ['c1'], photo: false),
+    ], store: _MemoryStore(closedForBody));
+    expect(find.textContaining('sin foto'), findsNothing);
+  });
+
+  testWidgets('a closed warning shows again when another product joins it', (
+    tester,
+  ) async {
+    await pumpAdmin(tester, [
+      _product('Body', ['c1'], photo: false),
+      _product('Gorro', ['c1'], photo: false),
+    ], store: _MemoryStore(closedForBody));
+    expect(find.textContaining('Hay 2 productos sin foto'), findsOneWidget);
   });
 
   testWidgets('"Revisar" lists only the products without category', (
