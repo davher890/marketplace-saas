@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { DEFAULT_EXPORT_COLUMNS, exportColumns, exportColumnsSchema, ordersCsv, type ExportOrder } from './orderExport';
+import {
+  COST_COLUMNS,
+  csvCell,
+  DEFAULT_EXPORT_COLUMNS,
+  exportColumns,
+  exportColumnsSchema,
+  ordersCsv,
+  type ExportOrder,
+} from './orderExport';
 
 const order: ExportOrder = {
   order_number: 1004,
@@ -74,4 +82,34 @@ test('cost columns: the breakdown in euros, blank when not worked out', () => {
   assert.equal(header, 'Pedido;Coste productos (€);Coste variantes (€);Transporte proveedores (€);Cajas (€);Coste total (€)');
   assert.equal(row, '1004;6,00;46,00;2,50;3,00;57,50');
   assert.equal(lines(ordersCsv([order], columns))[1], '1004;;;;;');
+});
+
+test('profit column: total minus cost, negative when the order lost money', () => {
+  const costs = {
+    items: [],
+    suppliers: [],
+    products_cost_cents: 0,
+    variants_cost_cents: 0,
+    boxes_cost_cents: 0,
+    items_cost_cents: 0,
+    transport_cents: 0,
+    missing_costs: false,
+    estimated: false,
+  };
+  const columns = ['order_number', 'total', 'cost_total', 'profit'];
+  const gain: ExportOrder = { ...order, total_cents: 8000, costs: { ...costs, total_cost_cents: 5750 } };
+  const loss: ExportOrder = { ...order, total_cents: 2000, costs: { ...costs, total_cost_cents: 2350 } };
+  const csv = lines(ordersCsv([gain, loss, order], columns));
+  assert.equal(csv[0], 'Pedido;Total (€);Coste total (€);Beneficio (€)');
+  assert.equal(csv[1], '1004;80,00;57,50;22,50');
+  assert.equal(csv[2], '1004;20,00;23,50;-3,50');
+  assert.equal(csv[3].split(';')[3], '');
+  assert.equal(COST_COLUMNS.has('profit'), true);
+});
+
+test('csvCell: negative amounts stay numbers, formulas still get an apostrophe', () => {
+  assert.equal(csvCell('-3,50'), '-3,50');
+  assert.equal(csvCell('-12'), '-12');
+  assert.equal(csvCell('-1+1'), "'-1+1");
+  assert.equal(csvCell('=SUM(A1)'), "'=SUM(A1)");
 });

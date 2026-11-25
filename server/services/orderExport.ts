@@ -82,10 +82,14 @@ export function formatEuros(cents: number): string {
 /**
  * One CSV cell. Quoted when needed; text starting with = + - @ gets a
  * leading apostrophe so Excel doesn't run what a customer typed as a formula.
+ * A plain negative amount ("-3,50", e.g. a loss in "Beneficio") is left as
+ * is: it can't be a formula, and Excel must read it as a number.
  */
 export function csvCell(value: string | number): string {
   let text = String(value);
-  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text) && !/^-\d+(,\d+)?$/.test(text)) {
+    text = `'${text}`;
+  }
   return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -97,8 +101,20 @@ function cost(
   return order.costs ? formatEuros(order.costs[figure]) : '';
 }
 
+/** What the shop made on the order: its total minus what it cost. */
+function profit(order: ExportOrder): string {
+  return order.costs ? formatEuros(order.total_cents - order.costs.total_cost_cents) : '';
+}
+
 /** Columns that need the orders' costs. */
-export const COST_COLUMNS = new Set<string>(['cost_products', 'cost_variants', 'cost_transport', 'cost_boxes', 'cost_total']);
+export const COST_COLUMNS = new Set<string>([
+  'cost_products',
+  'cost_variants',
+  'cost_transport',
+  'cost_boxes',
+  'cost_total',
+  'profit',
+]);
 
 /** What a column needs to fill its cell for one order. */
 type Row = { order: ExportOrder; pickup: boolean; address: Record<string, string>; items: ExportItem[] };
@@ -149,6 +165,7 @@ export const EXPORT_COLUMNS = [
   },
   { key: 'cost_boxes', label: 'Cajas (€)', cell: ({ order }: Row) => cost(order, 'boxes_cost_cents') },
   { key: 'cost_total', label: 'Coste total (€)', cell: ({ order }: Row) => cost(order, 'total_cost_cents') },
+  { key: 'profit', label: 'Beneficio (€)', cell: ({ order }: Row) => profit(order) },
   { key: 'customer_notes', label: 'Notas del cliente', cell: ({ order }: Row) => order.customer_notes ?? '' },
   { key: 'admin_notes', label: 'Notas internas', cell: ({ order }: Row) => order.admin_notes ?? '' },
 ] as const satisfies readonly { key: string; label: string; cell: (row: Row) => string | number }[];
