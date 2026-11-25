@@ -173,7 +173,13 @@ void main() {
       final cost = tester.getTopLeft(field('Coste (€)').first);
       expect(cost.dx, greaterThan(price.dx));
       expect(cost.dy, price.dy);
-      expect(find.text('3,00'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: field('Coste (€)').first,
+          matching: find.text('3,00'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Telas Ana'), findsOneWidget);
       expect(find.text('M · ${formatCents(50)}'), findsOneWidget);
 
@@ -183,6 +189,29 @@ void main() {
       expect(variantCost.dx, greaterThan(variantPrice.dx));
       expect(variantCost.dy, variantPrice.dy);
       expect(find.text('4,50'), findsOneWidget);
+    });
+
+    testWidgets('the transport is filled in from the chosen supplier', (
+      tester,
+    ) async {
+      await pump(tester);
+      final transport = find.byKey(const Key('supplier-transport'));
+      String shown() =>
+          (tester.widget<InputDecorator>(transport).child! as Text).data!;
+
+      // Right of the supplier, on the same line.
+      final supplier = tester.getTopLeft(find.text('Proveedor'));
+      expect(tester.getTopLeft(transport).dx, greaterThan(supplier.dx));
+      expect(shown(), '3,00');
+
+      await _tap(tester, find.text('Telas Ana'));
+      await _tap(tester, find.text('Cajas Sur').last);
+      expect(shown(), '1,50');
+
+      await _tap(tester, find.text('Cajas Sur'));
+      await _tap(tester, find.text('Sin proveedor').last);
+      expect(shown(), '');
+      expect(find.text('Elige un proveedor'), findsOneWidget);
     });
 
     testWidgets('saving sends the costs, supplier and box', (tester) async {

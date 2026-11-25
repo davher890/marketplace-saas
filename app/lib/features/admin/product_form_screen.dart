@@ -747,7 +747,8 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   }
 }
 
-/// Supplier and box size of the product, from the lists in Ajustes.
+/// Supplier (with its transport, filled in from Ajustes) and box size of the
+/// product. Three in a row on wide screens; the box goes below on a phone.
 class _CostFields extends ConsumerWidget {
   const _CostFields({
     required this.supplierId,
@@ -766,56 +767,93 @@ class _CostFields extends ConsumerWidget {
     final suppliers = ref.watch(suppliersProvider).value;
     final boxes = ref.watch(costSettingsProvider).value;
     // A supplier deleted in the meantime shows as none.
-    final known = suppliers?.any((s) => s.id == supplierId) == true
-        ? supplierId
-        : null;
+    final supplier = suppliers?.where((s) => s.id == supplierId).firstOrNull;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: DropdownButtonFormField<String?>(
-            // Re-created once the list arrives, to show the saved supplier.
-            key: ValueKey('supplier-${suppliers != null}'),
-            initialValue: known,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Proveedor',
-              helperText: 'Se dan de alta en Ajustes',
-            ),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Sin proveedor')),
-              for (final supplier in suppliers ?? const <Supplier>[])
-                DropdownMenuItem(
-                  value: supplier.id,
-                  child: Text(supplier.name, overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            onChanged: suppliers == null ? null : onSupplier,
+    final supplierField = DropdownButtonFormField<String?>(
+      // Re-created once the list arrives, to show the saved supplier.
+      key: ValueKey('supplier-${suppliers != null}'),
+      initialValue: supplier?.id,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Proveedor',
+        helperText: 'Se dan de alta en Ajustes',
+      ),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Sin proveedor')),
+        for (final supplier in suppliers ?? const <Supplier>[])
+          DropdownMenuItem(
+            value: supplier.id,
+            child: Text(supplier.name, overflow: TextOverflow.ellipsis),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: DropdownButtonFormField<BoxSize?>(
-            initialValue: boxSize,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Caja'),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('Sin caja')),
-              for (final size in BoxSize.values)
-                DropdownMenuItem(
-                  value: size,
-                  child: Text(
-                    boxes == null
-                        ? size.apiName
-                        : '${size.apiName} · ${formatCents(boxes.priceOf(size))}',
-                  ),
-                ),
-            ],
-            onChanged: onBoxSize,
-          ),
-        ),
       ],
+      onChanged: suppliers == null ? null : onSupplier,
+    );
+
+    // The supplier's own transport: shown here, changed in Ajustes.
+    final transportField = InputDecorator(
+      key: const Key('supplier-transport'),
+      isEmpty: supplier == null,
+      decoration: InputDecoration(
+        labelText: 'Transporte (€)',
+        helperText: supplier == null
+            ? 'Elige un proveedor'
+            : 'Del proveedor; se cambia en Ajustes',
+      ),
+      child: Text(
+        supplier == null ? '' : centsToInput(supplier.transportCents),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(color: AppColors.cocoa),
+      ),
+    );
+
+    final boxField = DropdownButtonFormField<BoxSize?>(
+      initialValue: boxSize,
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Caja'),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Sin caja')),
+        for (final size in BoxSize.values)
+          DropdownMenuItem(
+            value: size,
+            child: Text(
+              boxes == null
+                  ? size.apiName
+                  : '${size.apiName} · ${formatCents(boxes.priceOf(size))}',
+            ),
+          ),
+      ],
+      onChanged: onBoxSize,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final supplierRow = [
+          Expanded(child: supplierField),
+          const SizedBox(width: 12),
+          Expanded(child: transportField),
+        ];
+        if (constraints.maxWidth >= 600) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...supplierRow,
+              const SizedBox(width: 12),
+              Expanded(child: boxField),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: supplierRow,
+            ),
+            const SizedBox(height: 8),
+            boxField,
+          ],
+        );
+      },
     );
   }
 }
