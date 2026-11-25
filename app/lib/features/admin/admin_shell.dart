@@ -1,13 +1,89 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../models/product.dart';
 import '../../repositories/admin_repository.dart';
 
+/// Where closed warnings are remembered on this device. Replaced in tests.
+class DismissedWarningsStore {
+  const DismissedWarningsStore();
+
+  static const _key = 'admin_dismissed_warnings';
+  static const _storage = FlutterSecureStorage();
+
+  /// Per warning, the products it listed when it was closed.
+  Future<Map<String, Set<String>>> load() async {
+    try {
+      final raw = await _storage.read(key: _key);
+      if (raw == null) return {};
+      return {
+        for (final MapEntry(:key, :value)
+            in (jsonDecode(raw) as Map<String, dynamic>).entries)
+          key: {...(value as List).cast<String>()},
+      };
+    } catch (_) {
+      return {}; // Unreadable: the warnings simply show again.
+    }
+  }
+
+  Future<void> save(Map<String, Set<String>> dismissed) async {
+    try {
+      await _storage.write(
+        key: _key,
+        value: jsonEncode({
+          for (final MapEntry(:key, :value) in dismissed.entries)
+            key: value.toList(),
+        }),
+      );
+    } catch (_) {
+      // Not remembered: it shows again after a reload.
+    }
+  }
+}
+
+final dismissedWarningsStoreProvider = Provider(
+  (ref) => const DismissedWarningsStore(),
+);
+
+/// Warnings the admin closed, with the products each one listed then. A
+/// closed warning stays hidden until another product joins its list.
+final dismissedWarningsProvider =
+    NotifierProvider<DismissedWarnings, Map<String, Set<String>>>(
+      DismissedWarnings.new,
+    );
+
+class DismissedWarnings extends Notifier<Map<String, Set<String>>> {
+  DismissedWarningsStore get _store => ref.read(dismissedWarningsStoreProvider);
+
+  @override
+  Map<String, Set<String>> build() {
+    _store.load().then((stored) {
+      if (ref.mounted) state = {...stored, ...state};
+    });
+    return const {};
+  }
+
+  /// Closes [warning] for the [products] it lists now.
+  void dismiss(String warning, Iterable<Product> products) {
+    state = {...state, warning: products.map((p) => p.id).toSet()};
+    _store.save(state);
+  }
+
+  /// Hidden while every product it lists was already listed when closed.
+  bool isDismissed(String warning, Iterable<Product> products) {
+    final closed = state[warning];
+    return closed != null && products.every((p) => closed.contains(p.id));
+  }
+}
+
 /// Admin layout: navigation rail on wide screens, bottom bar on phones, and
-/// a warning on top while some product has no category.
+/// warnings on top while some product has no category or photo (each can be
+/// closed).
 class AdminShell extends ConsumerWidget {
   const AdminShell({super.key, required this.child});
 
@@ -44,8 +120,12 @@ class AdminShell extends ConsumerWidget {
         ref.watch(uncategorizedProductsProvider).value ?? const <Product>[];
     final withoutPhoto =
         ref.watch(productsWithoutPhotoProvider).value ?? const <Product>[];
+    ref.watch(dismissedWarningsProvider);
+    final dismissed = ref.read(dismissedWarningsProvider.notifier);
+    bool shows(String warning, List<Product> products) =>
+        products.isNotEmpty && !dismissed.isDismissed(warning, products);
     final warnings = [
-      if (uncategorized.isNotEmpty)
+      if (shows('uncategorized', uncategorized))
         _ProductsWarning(
           products: uncategorized,
           missing: 'sin categoría',
@@ -56,14 +136,16 @@ class AdminShell extends ConsumerWidget {
               'no aparecen en la tienda (ni en los menús ni en '
               'el buscador)',
           reviewPath: '/admin/products?sin_categoria=1',
+          onClose: () => dismissed.dismiss('uncategorized', uncategorized),
         ),
-      if (withoutPhoto.isNotEmpty)
+      if (shows('without_photo', withoutPhoto))
         _ProductsWarning(
           products: withoutPhoto,
           missing: 'sin foto',
           consequence: 'se ve en la tienda sin imagen',
           consequencePlural: 'se ven en la tienda sin imagen',
           reviewPath: '/admin/products?sin_foto=1',
+          onClose: () => dismissed.dismiss('without_photo', withoutPhoto),
         ),
     ];
     final page = warnings.isEmpty
@@ -135,7 +217,7 @@ class AdminShell extends ConsumerWidget {
 }
 
 /// "Hay 2 productos sin foto (…): se ven en la tienda sin imagen", with a
-/// button to see them in the product list.
+/// button to see them in the product list and one to close it.
 class _ProductsWarning extends StatelessWidget {
   const _ProductsWarning({
     required this.products,
@@ -143,6 +225,7 @@ class _ProductsWarning extends StatelessWidget {
     required this.consequence,
     required this.consequencePlural,
     required this.reviewPath,
+    required this.onClose,
   });
 
   final List<Product> products;
@@ -152,6 +235,7 @@ class _ProductsWarning extends StatelessWidget {
   final String consequence;
   final String consequencePlural;
   final String reviewPath;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -179,6 +263,11 @@ class _ProductsWarning extends StatelessWidget {
             TextButton(
               onPressed: () => context.go(reviewPath),
               child: const Text('Revisar'),
+            ),
+            IconButton(
+              tooltip: 'Cerrar aviso',
+              icon: const Icon(Icons.close, color: Color(0xFF5C4800)),
+              onPressed: onClose,
             ),
           ],
         ),

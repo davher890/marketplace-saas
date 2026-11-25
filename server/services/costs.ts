@@ -277,6 +277,12 @@ export async function saveOrderCosts(orderId: string, lines: Omit<OrderLine, 'qu
   );
 }
 
+/**
+ * A line's cost as used for an order: also whether it was worked out with
+ * today's costs and whether its unit cost is the variant's own.
+ */
+type LineCost = ItemCost & { estimated?: boolean; from_variant?: boolean };
+
 export type OrderItemCost = ItemCost & {
   order_item_id: string;
   quantity: number;
@@ -284,12 +290,21 @@ export type OrderItemCost = ItemCost & {
   line_cost_cents: number;
   /** Worked out with today's costs: the order is older than the costs. */
   estimated: boolean;
+  /** The unit cost is the variant's own, not the product's. */
+  from_variant: boolean;
 };
 
 export type OrderCosts = {
   items: OrderItemCost[];
   /** Each supplier once, with its transport. */
   suppliers: { name: string; transport_cents: number }[];
+  /** Units at the product's cost. */
+  products_cost_cents: number;
+  /** Units at a variant's own cost. */
+  variants_cost_cents: number;
+  /** One box per article. */
+  boxes_cost_cents: number;
+  /** Products, variants and boxes. */
   items_cost_cents: number;
   transport_cents: number;
   total_cost_cents: number;
@@ -303,14 +318,11 @@ export type OrderCosts = {
  * The cost of an order from its lines' costs: each line's units and box,
  * plus the transport of each supplier once, however many lines it has.
  */
-export function computeOrderCosts(
-  lines: Pick<OrderLine, 'id' | 'quantity'>[],
-  costs: Map<string, ItemCost & { estimated?: boolean }>,
-): OrderCosts {
+export function computeOrderCosts(lines: Pick<OrderLine, 'id' | 'quantity'>[], costs: Map<string, LineCost>): OrderCosts {
   const items: OrderItemCost[] = [];
   const suppliers = new Map<string, { name: string; transport_cents: number }>();
   for (const line of lines) {
-    const cost = costs.get(line.id) ?? {
+    const { estimated, from_variant, ...cost } = costs.get(line.id) ?? {
       unit_cost_cents: null,
       box_size: null,
       box_cents: 0,
@@ -323,18 +335,26 @@ export function computeOrderCosts(
       order_item_id: line.id,
       quantity: line.quantity,
       line_cost_cents: (cost.unit_cost_cents ?? 0) * line.quantity + cost.box_cents,
-      estimated: cost.estimated ?? false,
+      estimated: estimated ?? false,
+      from_variant: from_variant ?? false,
     });
     const key = cost.supplier_id ?? (cost.supplier_name ? `name:${cost.supplier_name}` : null);
     if (key && !suppliers.has(key)) {
       suppliers.set(key, { name: cost.supplier_name ?? '', transport_cents: cost.transport_cents });
     }
   }
+  const units = (fromVariant: boolean) =>
+    items
+      .filter((item) => item.from_variant === fromVariant)
+      .reduce((sum, item) => sum + (item.unit_cost_cents ?? 0) * item.quantity, 0);
   const itemsCost = items.reduce((sum, item) => sum + item.line_cost_cents, 0);
   const transport = [...suppliers.values()].reduce((sum, s) => sum + s.transport_cents, 0);
   return {
     items,
     suppliers: [...suppliers.values()],
+    products_cost_cents: units(false),
+    variants_cost_cents: units(true),
+    boxes_cost_cents: items.reduce((sum, item) => sum + item.box_cents, 0),
     items_cost_cents: itemsCost,
     transport_cents: transport,
     total_cost_cents: itemsCost + transport,
@@ -343,31 +363,69 @@ export function computeOrderCosts(
   };
 }
 
+/** Splits [values] into groups of [size], to keep `in (...)` filters short. */
+function chunks<T>(values: T[], size = 200): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+export type OrderWithLines = { id: string; order_items: (OrderLine & { created_at?: string })[] };
+
+/**
+ * The costs of several orders: what was saved when each was placed, today's
+ * costs for older lines. A line's unit cost counts as the variant's when its
+ * variant has a cost of its own.
+ */
+export async function costsForOrders(orders: OrderWithLines[]): Promise<Map<string, OrderCosts>> {
+  const db = supabaseAdmin();
+  const lines = orders.flatMap((order) => order.order_items);
+  const costs = new Map<string, LineCost>();
+  for (const ids of chunks(orders.map((order) => order.id))) {
+    const saved = unwrap(
+      await db
+        .from('order_item_costs')
+        .select('order_item_id, unit_cost_cents, box_size, box_cents, supplier_id, supplier_name, transport_cents')
+        .in('order_id', ids),
+    ) as (ItemCost & { order_item_id: string })[];
+    for (const { order_item_id, ...cost } of saved) costs.set(order_item_id, cost);
+  }
+  const unsaved = lines.filter((line) => !costs.has(line.id));
+  if (unsaved.length > 0) {
+    for (const group of chunks(unsaved)) {
+      for (const [id, cost] of await currentItemCosts(group)) costs.set(id, { ...cost, estimated: true });
+    }
+  }
+  const variantIds = [...new Set(lines.map((l) => l.variant_id).filter((id): id is string => Boolean(id)))];
+  const withOwnCost = new Set<string>();
+  for (const ids of chunks(variantIds)) {
+    const rows = unwrap(await db.from('variant_costs').select('variant_id').in('variant_id', ids)) as {
+      variant_id: string;
+    }[];
+    for (const row of rows) withOwnCost.add(row.variant_id);
+  }
+  for (const line of lines) {
+    const cost = costs.get(line.id);
+    if (cost) cost.from_variant = line.variant_id !== null && withOwnCost.has(line.variant_id);
+  }
+
+  const result = new Map<string, OrderCosts>();
+  for (const order of orders) {
+    const sorted = [...order.order_items].sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
+    result.set(order.id, computeOrderCosts(sorted, costs));
+  }
+  return result;
+}
+
 /** The costs of an order: those saved when it was placed, today's for older lines. */
 export async function getOrderCosts(orderId: string): Promise<OrderCosts> {
-  const db = supabaseAdmin();
   const order = unwrap(
-    await db
+    await supabaseAdmin()
       .from('orders')
       .select('id, order_items(id, product_id, variant_id, quantity, created_at)')
       .eq('id', orderId)
       .maybeSingle(),
-  ) as { id: string; order_items: (OrderLine & { created_at: string })[] } | null;
+  ) as OrderWithLines | null;
   if (!order) throw notFound('Order not found');
-  const lines = [...order.order_items].sort((a, b) => a.created_at.localeCompare(b.created_at));
-
-  const saved = unwrap(
-    await db
-      .from('order_item_costs')
-      .select('order_item_id, unit_cost_cents, box_size, box_cents, supplier_id, supplier_name, transport_cents')
-      .eq('order_id', orderId),
-  ) as (ItemCost & { order_item_id: string })[];
-  const costs = new Map<string, ItemCost & { estimated?: boolean }>(
-    saved.map(({ order_item_id, ...cost }) => [order_item_id, cost]),
-  );
-  const unsaved = lines.filter((line) => !costs.has(line.id));
-  if (unsaved.length > 0) {
-    for (const [id, cost] of await currentItemCosts(unsaved)) costs.set(id, { ...cost, estimated: true });
-  }
-  return computeOrderCosts(lines, costs);
+  return (await costsForOrders([order])).get(order.id)!;
 }

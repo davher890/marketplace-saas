@@ -52,3 +52,26 @@ test('the saved list needs at least one known column, without repeats', () => {
   assert.equal(exportColumnsSchema.safeParse({ columns: ['total', 'total'] }).success, false);
   assert.equal(exportColumnsSchema.safeParse({ columns: ['nope'] }).success, false);
 });
+
+test('cost columns: the breakdown in euros, blank when not worked out', () => {
+  const columns = ['order_number', 'cost_products', 'cost_variants', 'cost_transport', 'cost_boxes', 'cost_total'];
+  const withCosts: ExportOrder = {
+    ...order,
+    costs: {
+      items: [],
+      suppliers: [],
+      products_cost_cents: 600,
+      variants_cost_cents: 4600,
+      boxes_cost_cents: 300,
+      items_cost_cents: 5500,
+      transport_cents: 250,
+      total_cost_cents: 5750,
+      missing_costs: false,
+      estimated: false,
+    },
+  };
+  const [header, row] = lines(ordersCsv([withCosts], columns));
+  assert.equal(header, 'Pedido;Coste productos (€);Coste variantes (€);Transporte proveedores (€);Cajas (€);Coste total (€)');
+  assert.equal(row, '1004;6,00;46,00;2,50;3,00;57,50');
+  assert.equal(lines(ordersCsv([order], columns))[1], '1004;;;;;');
+});

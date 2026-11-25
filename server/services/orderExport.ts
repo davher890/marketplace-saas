@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { badRequest } from '../http';
 import { check, now, supabaseAdmin, unwrap, type DbClient } from '../supabase';
+import { costsForOrders, type OrderCosts } from './costs';
 import { monthKey } from './orderSummary';
 import type { OrderStatus } from './orders';
 
@@ -20,6 +21,9 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 };
 
 type ExportItem = {
+  id?: string;
+  product_id?: string | null;
+  variant_id?: string | null;
   product_name: string;
   variant_name: string;
   quantity: number;
@@ -28,6 +32,7 @@ type ExportItem = {
 };
 
 export type ExportOrder = {
+  id?: string;
   order_number: number;
   status: OrderStatus;
   created_at: string;
@@ -45,6 +50,8 @@ export type ExportOrder = {
   customer_notes: string | null;
   admin_notes: string | null;
   order_items?: ExportItem[];
+  /** What it cost the shop; only worked out when a cost column is picked. */
+  costs?: OrderCosts;
 };
 
 /** "2026-11", validated (any month from 2000 on). */
@@ -81,6 +88,17 @@ export function csvCell(value: string | number): string {
   if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
+
+/** One figure of the order's cost, blank when costs weren't worked out. */
+function cost(
+  order: ExportOrder,
+  figure: 'products_cost_cents' | 'variants_cost_cents' | 'transport_cents' | 'boxes_cost_cents' | 'total_cost_cents',
+): string {
+  return order.costs ? formatEuros(order.costs[figure]) : '';
+}
+
+/** Columns that need the orders' costs. */
+export const COST_COLUMNS = new Set<string>(['cost_products', 'cost_variants', 'cost_transport', 'cost_boxes', 'cost_total']);
 
 /** What a column needs to fill its cell for one order. */
 type Row = { order: ExportOrder; pickup: boolean; address: Record<string, string>; items: ExportItem[] };
@@ -119,6 +137,18 @@ export const EXPORT_COLUMNS = [
   { key: 'coupon', label: 'Cupón', cell: ({ order }: Row) => order.coupon_code ?? '' },
   { key: 'discount', label: 'Descuento (€)', cell: ({ order }: Row) => formatEuros(order.discount_cents ?? 0) },
   { key: 'total', label: 'Total (€)', cell: ({ order }: Row) => formatEuros(order.total_cents) },
+  // What the order cost the shop (see costs.ts): units at the product's cost,
+  // units at a variant's own cost, each supplier's transport once, one box
+  // per article, and the sum of all four.
+  { key: 'cost_products', label: 'Coste productos (€)', cell: ({ order }: Row) => cost(order, 'products_cost_cents') },
+  { key: 'cost_variants', label: 'Coste variantes (€)', cell: ({ order }: Row) => cost(order, 'variants_cost_cents') },
+  {
+    key: 'cost_transport',
+    label: 'Transporte proveedores (€)',
+    cell: ({ order }: Row) => cost(order, 'transport_cents'),
+  },
+  { key: 'cost_boxes', label: 'Cajas (€)', cell: ({ order }: Row) => cost(order, 'boxes_cost_cents') },
+  { key: 'cost_total', label: 'Coste total (€)', cell: ({ order }: Row) => cost(order, 'total_cost_cents') },
   { key: 'customer_notes', label: 'Notas del cliente', cell: ({ order }: Row) => order.customer_notes ?? '' },
   { key: 'admin_notes', label: 'Notas internas', cell: ({ order }: Row) => order.admin_notes ?? '' },
 ] as const satisfies readonly { key: string; label: string; cell: (row: Row) => string | number }[];
@@ -225,7 +255,7 @@ export async function monthOrders(month: string, db: DbClient = supabaseAdmin())
     await db
       .from('orders')
       .select(
-        'order_number, status, created_at, paid_at, delivery_method, shipping_name, contact_email, shipping_phone, shipping_address, subtotal_cents, shipping_cents, coupon_code, discount_cents, total_cents, customer_notes, admin_notes, order_items(product_name, variant_name, quantity, customization, created_at)',
+        'id, order_number, status, created_at, paid_at, delivery_method, shipping_name, contact_email, shipping_phone, shipping_address, subtotal_cents, shipping_cents, coupon_code, discount_cents, total_cents, customer_notes, admin_notes, order_items(id, product_id, variant_id, product_name, variant_name, quantity, customization, created_at)',
       )
       .gte('created_at', from)
       .lt('created_at', to)
@@ -238,6 +268,21 @@ export async function monthOrders(month: string, db: DbClient = supabaseAdmin())
 /** The CSV file as a download. */
 export async function monthOrdersCsvResponse(month: string, headers: Record<string, string>): Promise<Response> {
   const [orders, columns] = await Promise.all([monthOrders(month), getExportColumns()]);
+  if (columns.some((key) => COST_COLUMNS.has(key))) {
+    const costs = await costsForOrders(
+      orders.map((order) => ({
+        id: order.id!,
+        order_items: (order.order_items ?? []).map((item) => ({
+          id: item.id!,
+          product_id: item.product_id ?? null,
+          variant_id: item.variant_id ?? null,
+          quantity: item.quantity,
+          created_at: item.created_at,
+        })),
+      })),
+    );
+    for (const order of orders) order.costs = costs.get(order.id!);
+  }
   const csv = ordersCsv(orders, columns);
   return new Response(`﻿${csv}`, {
     headers: {

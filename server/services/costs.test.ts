@@ -117,3 +117,35 @@ test('a supplier needs a name; transport in whole cents', () => {
   assert.equal(supplierSchema.safeParse({ name: ' ', transport_cents: 300 }).success, false);
   assert.equal(supplierSchema.safeParse({ name: 'A', transport_cents: -1 }).success, false);
 });
+
+test('breakdown: units at product cost, at variant cost, boxes and transport', () => {
+  const costs = computeOrderCosts(
+    [
+      { id: 'bola', quantity: 2 },
+      { id: 'bolso', quantity: 1 },
+    ],
+    new Map<string, ItemCost & { from_variant?: boolean }>([
+      ['bola', cost({ unit_cost_cents: 300, box_size: 'M', box_cents: 110, supplier_id: 'j', supplier_name: 'Jessi' })],
+      [
+        'bolso',
+        {
+          ...cost({
+            unit_cost_cents: 4600,
+            box_size: 'L',
+            box_cents: 190,
+            supplier_id: 'c',
+            supplier_name: 'Carmen CL',
+            transport_cents: 250,
+          }),
+          from_variant: true,
+        },
+      ],
+    ]),
+  );
+  assert.equal(costs.products_cost_cents, 600);
+  assert.equal(costs.variants_cost_cents, 4600);
+  assert.equal(costs.boxes_cost_cents, 300);
+  assert.equal(costs.transport_cents, 250);
+  assert.equal(costs.total_cost_cents, 600 + 4600 + 300 + 250);
+  assert.equal(costs.items_cost_cents + costs.transport_cents, costs.total_cost_cents);
+});
