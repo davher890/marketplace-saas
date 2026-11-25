@@ -82,8 +82,8 @@ class DismissedWarnings extends Notifier<Map<String, Set<String>>> {
 }
 
 /// Admin layout: navigation rail on wide screens, bottom bar on phones, and
-/// warnings on top while some product has no category or photo (each can be
-/// closed).
+/// warnings on top while some product has no category, photo or cost (each
+/// can be closed).
 class AdminShell extends ConsumerWidget {
   const AdminShell({super.key, required this.child});
 
@@ -120,6 +120,8 @@ class AdminShell extends ConsumerWidget {
         ref.watch(uncategorizedProductsProvider).value ?? const <Product>[];
     final withoutPhoto =
         ref.watch(productsWithoutPhotoProvider).value ?? const <Product>[];
+    final withoutCost =
+        ref.watch(productsWithoutCostProvider).value ?? const <Product>[];
     ref.watch(dismissedWarningsProvider);
     final dismissed = ref.read(dismissedWarningsProvider.notifier);
     bool shows(String warning, List<Product> products) =>
@@ -146,6 +148,17 @@ class AdminShell extends ConsumerWidget {
           consequencePlural: 'se ven en la tienda sin imagen',
           reviewPath: '/admin/products?sin_foto=1',
           onClose: () => dismissed.dismiss('without_photo', withoutPhoto),
+        ),
+      if (shows('without_cost', withoutCost))
+        _ProductsWarning(
+          products: withoutCost,
+          missing: 'sin coste',
+          consequence:
+              'cuenta como 0 € en el coste y el beneficio de los pedidos',
+          consequencePlural:
+              'cuentan como 0 € en el coste y el beneficio de los pedidos',
+          reviewPath: '/admin/products?sin_coste=1',
+          onClose: () => dismissed.dismiss('without_cost', withoutCost),
         ),
     ];
     final page = warnings.isEmpty

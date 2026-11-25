@@ -21,23 +21,32 @@ class _MemoryStore extends DismissedWarningsStore {
       stored = dismissed;
 }
 
-Product _product(String name, List<String> categories, {bool photo = true}) =>
-    Product.fromJson({
-      'id': name,
-      'name': name,
-      'slug': name.toLowerCase(),
-      'base_price_cents': 1000,
-      'category_ids': categories,
-      'product_variants': [],
-      'product_images': [
-        if (photo)
-          {
-            'id': 'i-$name',
-            'product_id': name,
-            'url': 'https://img.test/$name.jpg',
-          },
-      ],
-    });
+Product _product(
+  String name,
+  List<String> categories, {
+  bool photo = true,
+  int? cost = 500,
+  List<Map<String, dynamic>> variants = const [],
+}) => Product.fromJson({
+  'id': name,
+  'name': name,
+  'slug': name.toLowerCase(),
+  'base_price_cents': 1000,
+  'cost_cents': cost,
+  'category_ids': categories,
+  'product_variants': [
+    for (final (i, variant) in variants.indexed)
+      {'id': '$name-v$i', 'product_id': name, ...variant},
+  ],
+  'product_images': [
+    if (photo)
+      {
+        'id': 'i-$name',
+        'product_id': name,
+        'url': 'https://img.test/$name.jpg',
+      },
+  ],
+});
 
 void main() {
   Future<GoRouter> pumpAdmin(
@@ -65,6 +74,7 @@ void main() {
                 onlyUncategorized:
                     state.uri.queryParameters['sin_categoria'] == '1',
                 onlyWithoutPhoto: state.uri.queryParameters['sin_foto'] == '1',
+                onlyWithoutCost: state.uri.queryParameters['sin_coste'] == '1',
               ),
             ),
           ],
@@ -222,5 +232,75 @@ void main() {
     await tester.pumpAndSettle();
     expect(router.state.uri.toString(), '/admin/products');
     expect(find.text('Taza'), findsOneWidget);
+  });
+
+  testWidgets('warns about products without cost, and lists them', (
+    tester,
+  ) async {
+    final router = await pumpAdmin(tester, [
+      _product('Taza', ['c1']),
+      _product('Pack', ['c1'], cost: null),
+      // Every variant has its own cost: nothing missing.
+      _product(
+        'Body',
+        ['c1'],
+        cost: null,
+        variants: [
+          {'cost_cents': 300},
+        ],
+      ),
+      // A variant with no cost of its own and no product cost.
+      _product(
+        'Gorro',
+        ['c1'],
+        cost: null,
+        variants: [
+          {'cost_cents': 300},
+          {'cost_cents': null},
+        ],
+      ),
+      // Only an inactive variant lacks a cost: it isn't sold.
+      _product(
+        'Babero',
+        ['c1'],
+        cost: null,
+        variants: [
+          {'cost_cents': 300},
+          {'cost_cents': null, 'is_active': false},
+        ],
+      ),
+    ]);
+    expect(
+      find.text(
+        'Hay 2 productos sin coste (Pack, Gorro): cuentan como 0 € en el '
+        'coste y el beneficio de los pedidos.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('sin categoría'), findsNothing);
+    expect(find.textContaining('sin foto'), findsNothing);
+
+    await tester.tap(find.text('Revisar'));
+    await tester.pumpAndSettle();
+    expect(router.state.uri.toString(), '/admin/products?sin_coste=1');
+    expect(find.widgetWithText(FilterChip, 'Sin coste (2)'), findsOneWidget);
+    expect(find.text('Pack'), findsWidgets);
+    expect(find.text('Gorro'), findsWidgets);
+    expect(find.text('Taza'), findsNothing);
+    expect(find.text('Body'), findsNothing);
+    expect(find.text('Babero'), findsNothing);
+  });
+
+  testWidgets('the cost warning closes on its own', (tester) async {
+    final store = _MemoryStore();
+    await pumpAdmin(tester, [
+      _product('Pack', ['c1'], cost: null),
+    ], store: store);
+    await tester.tap(find.byTooltip('Cerrar aviso'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('sin coste'), findsNothing);
+    expect(store.stored, {
+      'without_cost': {'Pack'},
+    });
   });
 }

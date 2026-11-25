@@ -68,6 +68,15 @@ class Product {
 
   String? get coverUrl => images.isEmpty ? null : images.first.url;
 
+  /// Something it sells has no cost: the product itself when it has no
+  /// variants, or an active variant with no cost of its own nor the
+  /// product's. Orders count it as 0 €.
+  bool get missingCost {
+    final sold = variants.where((v) => v.isActive);
+    if (sold.isEmpty) return costCents == null;
+    return sold.any((v) => (v.costCents ?? costCents) == null);
+  }
+
   List<ProductVariant> get activeVariants =>
       variants.where((v) => v.isActive).toList();
 
