@@ -105,6 +105,7 @@ const _errorMessages = {
   'coupon_not_applicable':
       'Ese código de descuento no se aplica a este pedido.',
   'coupon_code_taken': 'Ya hay un cupón con ese código.',
+  'supplier_name_taken': 'Ya hay un proveedor con ese nombre.',
 };
 
 /// Human readable message for API / network errors.

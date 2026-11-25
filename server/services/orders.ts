@@ -4,6 +4,7 @@ import type { AuthUser } from '../auth';
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap, type DbClient } from '../supabase';
 import { loadCartLines, removeOrderedLines } from './cart';
+import { saveOrderCosts } from './costs';
 import { orderDiscount, usableCoupon } from './coupons';
 import { sendPaymentConfirmedEmail, sendStatusChangeEmail } from './orderEmails';
 import { DELIVERY_METHODS, getSettings, isSpanishPostalCode, shippingFor } from './settings';
@@ -124,6 +125,7 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
   const discount = coupon ? orderDiscount(coupon, subtotal, shipping) : 0;
   const admin = supabaseAdmin();
   let orderId: string | null = null;
+  let orderLines: { id: string; product_id: string | null; variant_id: string | null }[] = [];
 
   try {
     const order = unwrap(
@@ -151,9 +153,10 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
     ) as { id: string };
     orderId = order.id;
 
-    check(
-      (
-        await admin.from('order_items').insert(
+    orderLines = unwrap(
+      await admin
+        .from('order_items')
+        .insert(
           lines.map((line) => ({
             order_id: order.id,
             product_id: line.product_variants.products.id,
@@ -166,14 +169,22 @@ export async function placeOrder(user: AuthUser, input: z.infer<typeof checkoutS
             customization: line.customization,
           })),
         )
-      ).error,
-    );
+        .select('id, product_id, variant_id'),
+    ) as { id: string; product_id: string | null; variant_id: string | null }[];
 
     await recordStatusChange(order.id, null, 'received', user.id);
   } catch (error) {
     // Undo what was done so far: the order (its lines cascade).
     if (orderId) await admin.from('orders').delete().eq('id', orderId);
     throw error;
+  }
+
+  // What it cost the shop, for the admin. The order is placed even if this
+  // fails: its costs are then worked out with the products' current costs.
+  try {
+    await saveOrderCosts(orderId!, orderLines);
+  } catch (error) {
+    console.error(`Could not save the costs of order ${orderId}:`, error);
   }
 
   await removeOrderedLines(

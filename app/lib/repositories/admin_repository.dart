@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
 import '../models/category.dart';
+import '../models/costs.dart';
 import '../models/coupon.dart';
 import '../models/product.dart';
 import '../models/shop_settings.dart';
@@ -17,6 +18,7 @@ class VariantDraft {
     this.priceCents,
     this.stock,
     this.isActive = true,
+    this.costCents,
   }) : options = options ?? {};
 
   factory VariantDraft.fromVariant(ProductVariant v) => VariantDraft(
@@ -27,6 +29,7 @@ class VariantDraft {
     priceCents: v.priceCents,
     stock: v.stock,
     isActive: v.isActive,
+    costCents: v.costCents,
   );
 
   /// `null` for variants that don't exist in the database yet.
@@ -38,6 +41,9 @@ class VariantDraft {
   int? stock;
   bool isActive;
 
+  /// Its own cost; `null` = the product's.
+  int? costCents;
+
   /// Variant payload for the admin API. Its position is its index in the list.
   Map<String, dynamic> toJson() => {
     if (id != null) 'id': id,
@@ -47,6 +53,7 @@ class VariantDraft {
     'price_cents': priceCents,
     'stock': stock,
     'is_active': isActive,
+    'cost_cents': costCents,
   };
 }
 
@@ -110,6 +117,33 @@ class AdminRepository {
   /// Refused by the API (409) while the category has products or sub-categories.
   Future<void> deleteCategory(String categoryId) async {
     await _api.delete('/api/admin/categories/$categoryId');
+  }
+
+  /// Price of each box size.
+  Future<CostSettings> fetchCostSettings() async =>
+      CostSettings.fromJson(await _api.get('/api/admin/cost-settings'));
+
+  Future<CostSettings> saveCostSettings(CostSettings settings) async =>
+      CostSettings.fromJson(
+        await _api.put('/api/admin/cost-settings', settings.toJson()),
+      );
+
+  Future<List<Supplier>> fetchSuppliers() async =>
+      parseList(await _api.get('/api/admin/suppliers'), Supplier.fromJson);
+
+  /// Creates the supplier (no id) or updates it.
+  Future<Supplier> saveSupplier(Supplier supplier) async => Supplier.fromJson(
+    supplier.id == null
+        ? await _api.post('/api/admin/suppliers', supplier.toJson())
+        : await _api.put(
+            '/api/admin/suppliers/${supplier.id}',
+            supplier.toJson(),
+          ),
+  );
+
+  /// Its products are left without a supplier; past orders keep its name.
+  Future<void> deleteSupplier(String supplierId) async {
+    await _api.delete('/api/admin/suppliers/$supplierId');
   }
 
   /// Creates the product (when [productId] is null) or updates it. The API
@@ -199,6 +233,16 @@ final productsWithoutPhotoProvider = FutureProvider<List<Product>>((ref) async {
 final adminCategoriesProvider = FutureProvider<List<Category>>((ref) {
   ref.watch(currentUserProvider);
   return ref.watch(adminRepositoryProvider).fetchAllCategories();
+});
+
+final costSettingsProvider = FutureProvider<CostSettings>((ref) {
+  ref.watch(currentUserProvider);
+  return ref.watch(adminRepositoryProvider).fetchCostSettings();
+});
+
+final suppliersProvider = FutureProvider<List<Supplier>>((ref) {
+  ref.watch(currentUserProvider);
+  return ref.watch(adminRepositoryProvider).fetchSuppliers();
 });
 
 final adminCouponsProvider = FutureProvider<List<Coupon>>((ref) {

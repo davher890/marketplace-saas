@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 import { badRequest, conflict, notFound } from '../http';
 import { check, now, supabaseAdmin, unwrap } from '../supabase';
+import {
+  flattenCosts,
+  productCostFields,
+  productCostsEmbed,
+  saveProductCosts,
+  variantCostsEmbed,
+  type ProductCosts,
+} from './costs';
 import * as images from './images';
 import {
   assertCategoriesExist,
@@ -22,10 +30,12 @@ export type Product = Record<string, unknown> & {
   product_categories?: { category_id: string; created_at: string }[];
 };
 
-const productSelect = `*, product_variants(*), product_images(*), ${productCategoriesEmbed}`;
+// Admin reads bring the costs along (never the catalog: costs are admin only).
+const productSelect = `*, ${productCostsEmbed}, product_variants(*, ${variantCostsEmbed}), product_images(*), ${productCategoriesEmbed}`;
 
 /** Nested lists in display order, and `category_ids` (main category first). */
 function sortNested(product: Product): Product & { category_ids: string[] } {
+  flattenCosts(product);
   product.product_variants.sort((a, b) => a.position - b.position);
   images.withImageUrls(product.product_images).sort((a, b) => a.position - b.position);
   return withCategoryIds(product);
@@ -75,6 +85,8 @@ const variantSchema = z.object({
   /** `null` = made to order. */
   stock: z.number().int().min(0).max(100_000).nullable().default(null),
   is_active: z.boolean().default(true),
+  /** What it costs the shop; `null` = the product's cost. Admin only. */
+  cost_cents: z.number().int().min(0).max(10_000_000).nullable().default(null),
 });
 
 /** A list the customer picks one value from, e.g. "Color del lazo": Rojo, Azul. */
@@ -110,6 +122,8 @@ export const productSchema = z.object({
     }),
   is_active: z.boolean().default(true),
   is_featured: z.boolean().default(false),
+  /** Cost, supplier and box size (admin only, kept apart from the catalog). */
+  ...productCostFields,
   variants: z.array(variantSchema).min(1, 'A product needs at least one variant').max(100),
 });
 
@@ -171,7 +185,10 @@ function explainUniqueViolation(error: unknown): never {
  */
 export async function saveProduct(productId: string | null, input: ProductInput): Promise<Product> {
   const db = supabaseAdmin();
-  const { variants, category_ids: _categoryIds, ...fields } = input;
+  const { variants: variantInputs, category_ids: _categoryIds, cost_cents, supplier_id, box_size, ...fields } = input;
+  const costs: ProductCosts = { cost_cents, supplier_id, box_size };
+  const variantCosts = variantInputs.map((v) => v.cost_cents);
+  const variants = variantInputs.map(({ cost_cents: _cost, ...v }) => v);
   const categoryIds = normalizeCategoryIds(input);
   const row = {
     ...fields,
@@ -186,14 +203,18 @@ export async function saveProduct(productId: string | null, input: ProductInput)
     if (productId === null) {
       const created = unwrap(await db.from('products').insert(row).select('id').single()) as { id: string };
       try {
-        check(
-          (
-            await db
-              .from('product_variants')
-              .insert(variants.map(({ id: _id, ...v }, position) => ({ ...v, position, product_id: created.id })))
-          ).error,
-        );
+        const inserted = unwrap(
+          await db
+            .from('product_variants')
+            .insert(variants.map(({ id: _id, ...v }, position) => ({ ...v, position, product_id: created.id })))
+            .select('id, position'),
+        ) as { id: string; position: number }[];
         await syncProductCategories(db, created.id, categoryIds);
+        await saveProductCosts(
+          created.id,
+          costs,
+          inserted.map((v) => ({ variant_id: v.id, cost_cents: variantCosts[v.position] ?? null })),
+        );
       } catch (error) {
         await db.from('products').delete().eq('id', created.id); // variants and links cascade
         throw error;
@@ -208,17 +229,33 @@ export async function saveProduct(productId: string | null, input: ProductInput)
     if (keptIds.length > 0) removed = removed.not('id', 'in', `(${keptIds.join(',')})`);
     check((await removed).error);
 
+    const savedIds: string[] = [];
     for (const [position, { id, ...variant }] of variants.entries()) {
-      const { error } = id
-        ? await db
+      if (id) {
+        const { error } = await db
+          .from('product_variants')
+          .update({ ...variant, position, updated_at: now() })
+          .eq('id', id)
+          .eq('product_id', productId);
+        check(error);
+        savedIds.push(id);
+      } else {
+        const inserted = unwrap(
+          await db
             .from('product_variants')
-            .update({ ...variant, position, updated_at: now() })
-            .eq('id', id)
-            .eq('product_id', productId)
-        : await db.from('product_variants').insert({ ...variant, position, product_id: productId });
-      check(error);
+            .insert({ ...variant, position, product_id: productId })
+            .select('id')
+            .single(),
+        ) as { id: string };
+        savedIds.push(inserted.id);
+      }
     }
     await syncProductCategories(db, productId, categoryIds);
+    await saveProductCosts(
+      productId,
+      costs,
+      savedIds.map((id, i) => ({ variant_id: id, cost_cents: variantCosts[i] })),
+    );
     return getProduct(productId);
   } catch (error) {
     explainUniqueViolation(error);
@@ -265,7 +302,8 @@ async function copySlug(slug: string): Promise<string> {
   return `${base}-${n}`;
 }
 
-type FullProduct = Product & {
+type FullProduct = Product &
+  ProductCosts & {
   name: string;
   slug: string;
   category_ids: string[];
@@ -299,6 +337,9 @@ export async function duplicateProduct(productId: string): Promise<Product> {
     product_images: sourceImages,
     product_categories: _links,
     category_ids: categoryIds,
+    cost_cents: costCents,
+    supplier_id: supplierId,
+    box_size: boxSize,
     ...fields
   } = source;
 
@@ -320,7 +361,7 @@ export async function duplicateProduct(productId: string): Promise<Product> {
   try {
     const variantIds = new Map<string, string>();
     for (const variant of variants) {
-      const { id, product_id: _p, created_at: _c, updated_at: _u, sku: _sku, ...rest } = variant;
+      const { id, product_id: _p, created_at: _c, updated_at: _u, sku: _sku, cost_cents: _cost, ...rest } = variant;
       const copy = unwrap(
         await db
           .from('product_variants')
@@ -332,6 +373,14 @@ export async function duplicateProduct(productId: string): Promise<Product> {
     }
 
     await syncProductCategories(db, created.id, categoryIds);
+    await saveProductCosts(
+      created.id,
+      { cost_cents: costCents, supplier_id: supplierId, box_size: boxSize },
+      variants.map((v) => ({
+        variant_id: variantIds.get(v.id)!,
+        cost_cents: (v as { cost_cents?: number | null }).cost_cents ?? null,
+      })),
+    );
 
     for (const image of sourceImages) {
       let storagePath: string | null = null;

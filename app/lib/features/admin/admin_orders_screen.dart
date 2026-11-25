@@ -317,7 +317,10 @@ class _AdminOrderScreenState extends ConsumerState<AdminOrderScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            OrderSummary(order: order),
+            OrderSummary(
+              order: order,
+              costs: ref.watch(adminOrderCostsProvider(order.id)).value,
+            ),
           ],
         );
       },

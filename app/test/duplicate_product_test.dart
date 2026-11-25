@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dona_galleta/features/admin/product_form_screen.dart';
+import 'package:dona_galleta/models/costs.dart';
 import 'package:dona_galleta/models/product.dart';
 import 'package:dona_galleta/repositories/admin_repository.dart';
 import 'package:dona_galleta/repositories/api_client.dart';
@@ -55,6 +56,14 @@ void main() {
         overrides: [
           adminRepositoryProvider.overrideWithValue(AdminRepository(api)),
           adminCategoriesProvider.overrideWith((ref) async => []),
+          suppliersProvider.overrideWith((ref) async => []),
+          costSettingsProvider.overrideWith(
+            (ref) async => const CostSettings(
+              boxSCents: 25,
+              boxMCents: 50,
+              boxLCents: 100,
+            ),
+          ),
           adminProductProvider.overrideWith(
             (ref, id) async => Product.fromJson(
               id == 'p1' ? _json('p1', 'Taza') : _json(id, 'Taza (copia)'),

@@ -185,6 +185,7 @@ coupons ─1:N─ orders (coupon_id, coupon_code, discount_cents)
 | Storefront product lists: cheapest first by default (lowest active variant price), or by price descending or name (Spanish alphabetical order, accents ignored). The category page keeps the choice in the URL (`?orden=nombre`) | `catalog.ts` |
 | Shipping: flat rate, free above a threshold | `settings.ts` |
 | Coupons: a unique code (stored in capitals, typed in any case), valid from one day to another, both included, in Spain's calendar, and switchable off. *Una vez por usuario*: each customer can use it on one order (cancelled orders don't count). *Una vez por compra*: usable on any number of orders. An order takes one coupon at most. The discount is an amount in euros, a percentage, or free shipping, and it comes off the final price (products + shipping) without going below 0. The API checks the coupon again and works out the discount when the order is placed; a coupon that gives nothing (free shipping on a pickup order) is refused. Orders keep the code and the amount (`coupon_code`, `discount_cents`, `total = subtotal + shipping - discount`), shown in the order, the emails and the CSV export | `coupons.ts`, `orders.ts` |
+| Costs (admin only): each product has a cost, a supplier and a box size (S, M, L), and a variant may have its own cost (like the price). Suppliers (name and the cost of picking an order up from them) and box prices (0,25 / 0,50 / 1,00 € to start) are set in *Ajustes*. An article's cost is unit cost × quantity + one box; an order's cost adds each supplier's transport once, however many of its articles come from it. Costs are saved with each order line when the order is placed (`order_item_costs`), so later changes don't alter past orders; older orders are worked out with today's costs. Costs live in their own tables with no RLS policies, since the catalog and the customers' orders are readable by customers | `costs.ts`, app `order_widgets.dart` |
 | New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
 | Status change: the customer gets an email for in preparation, shipped, delivered and cancelled (not for going back to received), and another when the order is marked paid | `orders.ts`, `orderEmails.ts` |
 | Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone, each month downloadable as a CSV file: a browser download on the web, the share sheet on Android; *Columnas del Excel* picks which columns the file has and in what order, saved for the shop in `shop_settings.order_export_columns`) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
@@ -221,6 +222,9 @@ coupons ─1:N─ orders (coupon_id, coupon_code, discount_cents)
      order.
    - `…13_order_export_columns.sql`: the columns of the monthly orders file
      chosen in *Columnas del Excel*.
+   - `…14_product_costs.sql`: suppliers, box prices, the cost of each product
+     and variant, and the costs saved with each order line. The admin
+     product list reads the costs, so run it before deploying.
 
    All but the first are safe to run more than once. Once `…09` has run, don't
    re-run the earlier ones (they would create empty tables in `public` again);
@@ -565,19 +569,23 @@ needs the admin role.
 | GET | `/api/admin/orders/export?month=2026-11` | That month's orders (Spain's calendar) as a CSV file for Excel in Spanish: one row per order, with the columns chosen in *Columnas del Excel* (every column if none), `;` between columns, decimal commas, UTF-8 with BOM. Text a customer typed that starts with `=`, `+`, `-` or `@` gets a leading `'` so Excel doesn't treat it as a formula. |
 | GET | `/api/admin/orders/export-columns` | Every column the monthly file can have (`available`: key and label, default order) and the chosen ones in order (`selected`). |
 | PUT | `/api/admin/orders/export-columns` | `{ "columns": ["order_number", "total", …] }`: the file's columns in order (at least one, no repeats). The default list is saved as `NULL`, so columns added later show up. |
+| GET | `/api/admin/orders/:id/costs` | What the order cost: each article (`unit_cost_cents`, box, `line_cost_cents`), each supplier's transport once, `total_cost_cents`, and whether some article has no cost (`missing_costs`) or was worked out with today's costs (`estimated`). |
 | PATCH | `/api/admin/orders/:id` | `{status?, paid?, admin_notes?}`. |
 | POST | `/api/devices` | Register an app install for push notifications: `{fid, platform: "android"}`. With a session it is linked to that user, without one to nobody. |
 | POST | `/api/admin/devices` | The same, for older app builds (admins only). |
 | GET / POST | `/api/admin/categories` | All categories (including inactive, with `product_count`) / create `{name, slug, parent_id, description, is_active}`. |
 | PUT / PATCH / DELETE | `/api/admin/categories/:id` | Replace / toggle `{is_active}` / delete (only if it has no products or sub-categories). |
 | POST | `/api/admin/categories/:id/move` | `{direction: "up" \| "down"}` among its siblings. |
-| GET / POST | `/api/admin/products` | List all / create with `variants` and `category_ids` (the first is the main category). |
+| GET / POST | `/api/admin/products` | List all / create with `variants` and `category_ids` (the first is the main category). Admin reads and writes also carry `cost_cents`, `supplier_id` and `box_size`, and `cost_cents` on each variant (never the store's product endpoints). |
 | GET / PUT / PATCH / DELETE | `/api/admin/products/:id` | Read / replace with variants / toggle `is_active`, `is_featured` / delete. |
 | POST | `/api/admin/products/:id/duplicate` | Copy the product: hidden, not featured, "(copia)" in the name, a free slug (`-copia`, `-copia-2`...), variants without SKU, same categories, and its own copy of each stored photo. Returns the copy (201). |
 | POST | `/api/admin/products/:id/images/upload-url` | `{file_name}` → `{bucket, path, token, content_type}`: a one-time signed upload for the Supabase SDK. |
 | POST | `/api/admin/products/:id/images` | Register `{storage_path}` or `{url}`. |
 | DELETE | `/api/admin/images/:id` | Delete an image (and its file). |
 | PUT | `/api/admin/settings` | Update shipping and contact settings. |
+| GET / PUT | `/api/admin/cost-settings` | Box prices: `{ "box_s_cents", "box_m_cents", "box_l_cents" }`. |
+| GET / POST | `/api/admin/suppliers` | List suppliers (with how many products use each) / add one: `{ "name", "transport_cents" }`. A repeated name is a 409 with `code: supplier_name_taken`. |
+| PUT / DELETE | `/api/admin/suppliers/:id` | Update or delete a supplier. Its products are left without one; past orders keep its name. |
 | GET / POST | `/api/admin/coupons` | Every coupon with its `status` today (`active`, `scheduled`, `expired`, `disabled`) and `uses` (orders not cancelled) / create `{code, description, starts_on, ends_on, usage: once_per_user\|once_per_order, discount_type: amount\|percent\|free_shipping, amount_cents?, percent?, is_active}`. A repeated code is refused (409, `coupon_code_taken`). |
 | PUT / PATCH | `/api/admin/coupons/:id` | Replace / toggle `{is_active}`. Coupons aren't deleted: switch them off. |
 

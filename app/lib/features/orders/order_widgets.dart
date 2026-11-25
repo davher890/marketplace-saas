@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/money.dart';
+import '../../core/theme.dart';
+import '../../models/costs.dart';
 import '../../models/order.dart';
 import '../../widgets/common.dart';
 
@@ -63,11 +65,63 @@ class OrderTile extends StatelessWidget {
   }
 }
 
-/// Lines, totals, shipping data and status timeline of an order.
+/// Lines, totals, shipping data and status timeline of an order. With
+/// [costs] (admin only) each article shows its cost, and the total cost
+/// goes under the total.
 class OrderSummary extends StatelessWidget {
-  const OrderSummary({super.key, required this.order});
+  const OrderSummary({super.key, required this.order, this.costs});
 
   final Order order;
+  final OrderCosts? costs;
+
+  /// "Coste total" and what it's made of: articles with their boxes, and
+  /// each supplier's transport once.
+  List<Widget> _costLines(BuildContext context, OrderCosts costs) {
+    final small = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: AppColors.cocoa);
+    Widget line(String label, String value, {TextStyle? style}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(value, style: style),
+        ],
+      ),
+    );
+    return [
+      const SizedBox(height: 8),
+      line(
+        'Coste total',
+        formatCents(costs.totalCostCents),
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          color: AppColors.cocoa,
+        ),
+      ),
+      line(
+        'Artículos y cajas',
+        formatCents(costs.itemsCostCents),
+        style: small,
+      ),
+      for (final supplier in costs.suppliers)
+        line(
+          'Transporte (${supplier.name})',
+          formatCents(supplier.transportCents),
+          style: small,
+        ),
+      if (costs.missingCosts)
+        Text(
+          'Algún artículo no tiene coste: el coste total se queda corto.',
+          style: small,
+        ),
+      if (costs.estimated)
+        Text(
+          'Pedido anterior a los costes: calculado con los costes actuales.',
+          style: small,
+        ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,6 +167,15 @@ class OrderSummary extends StatelessWidget {
                     ),
                   if (item.sku != null)
                     Text('SKU ${item.sku}', style: textTheme.bodySmall),
+                  if (costs?.forItem(item.id) case final cost?)
+                    Text(
+                      'Coste: ${formatCents(cost.lineCostCents)}'
+                      ' (${cost.breakdown})',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: AppColors.cocoa,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   const SizedBox(height: 6),
                 ],
                 const Divider(height: 24),
@@ -131,6 +194,7 @@ class OrderSummary extends StatelessWidget {
                     '-${formatCents(order.discountCents)}',
                   ),
                 row('Total', formatCents(order.totalCents), bold: true),
+                if (costs case final costs?) ..._costLines(context, costs),
               ],
             ),
           ),
