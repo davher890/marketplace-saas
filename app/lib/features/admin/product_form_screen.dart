@@ -9,6 +9,7 @@ import '../../core/money.dart';
 import '../../core/slug.dart';
 import '../../core/theme.dart';
 import '../../models/category.dart';
+import '../../models/costs.dart';
 import '../../models/product.dart';
 import '../../repositories/admin_repository.dart';
 import '../../repositories/product_image_repository.dart';
@@ -80,6 +81,13 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
     text: _p?.customizationLabel ?? '',
   );
 
+  /// What it costs the shop, who it's bought from and its box (admin only).
+  late final _cost = TextEditingController(
+    text: _p?.costCents == null ? '' : centsToInput(_p!.costCents!),
+  );
+  late String? _supplierId = _p?.supplierId;
+  late BoxSize? _boxSize = _p?.boxSize;
+
   /// Options the variants combine, e.g. Tamaño (8 cm, 10 cm) and Material.
   late final List<_OptionControllers> _options = [
     for (final option in variantOptions(_p?.variants ?? const []))
@@ -127,7 +135,14 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
 
   @override
   void dispose() {
-    for (final c in [_name, _slug, _description, _price, _customizationLabel]) {
+    for (final c in [
+      _name,
+      _slug,
+      _description,
+      _price,
+      _cost,
+      _customizationLabel,
+    ]) {
       c.dispose();
     }
     for (final v in _allVariants) {
@@ -254,6 +269,9 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
       choiceFields: [for (final field in _choiceFields) field.toField()],
       isActive: _isActive,
       isFeatured: _isFeatured,
+      costCents: parseCents(_cost.text),
+      supplierId: _supplierId,
+      boxSize: _boxSize,
     ).toJson();
 
     try {
@@ -480,14 +498,48 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
               const SizedBox(height: 8),
               _categoriesField(),
               const SizedBox(height: 8),
-              TextFormField(
-                controller: _price,
-                decoration: const InputDecoration(labelText: 'Precio (€) *'),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                validator: (v) =>
-                    parseCents(v ?? '') == null ? 'Importe no válido' : null,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _price,
+                      decoration: const InputDecoration(
+                        labelText: 'Precio (€) *',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (v) => parseCents(v ?? '') == null
+                          ? 'Importe no válido'
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _cost,
+                      decoration: const InputDecoration(
+                        labelText: 'Coste (€)',
+                        helperText: 'Solo lo ves tú',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: (v) =>
+                          (v ?? '').trim().isNotEmpty && parseCents(v!) == null
+                          ? 'Importe no válido'
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _CostFields(
+                supplierId: _supplierId,
+                boxSize: _boxSize,
+                onSupplier: (id) => setState(() => _supplierId = id),
+                onBoxSize: (size) => setState(() => _boxSize = size),
               ),
               TextFormField(
                 controller: _description,
@@ -695,6 +747,79 @@ class _ProductFormState extends ConsumerState<_ProductForm> {
   }
 }
 
+/// Supplier and box size of the product, from the lists in Ajustes.
+class _CostFields extends ConsumerWidget {
+  const _CostFields({
+    required this.supplierId,
+    required this.boxSize,
+    required this.onSupplier,
+    required this.onBoxSize,
+  });
+
+  final String? supplierId;
+  final BoxSize? boxSize;
+  final ValueChanged<String?> onSupplier;
+  final ValueChanged<BoxSize?> onBoxSize;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final suppliers = ref.watch(suppliersProvider).value;
+    final boxes = ref.watch(costSettingsProvider).value;
+    // A supplier deleted in the meantime shows as none.
+    final known = suppliers?.any((s) => s.id == supplierId) == true
+        ? supplierId
+        : null;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String?>(
+            // Re-created once the list arrives, to show the saved supplier.
+            key: ValueKey('supplier-${suppliers != null}'),
+            initialValue: known,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Proveedor',
+              helperText: 'Se dan de alta en Ajustes',
+            ),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Sin proveedor')),
+              for (final supplier in suppliers ?? const <Supplier>[])
+                DropdownMenuItem(
+                  value: supplier.id,
+                  child: Text(supplier.name, overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: suppliers == null ? null : onSupplier,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DropdownButtonFormField<BoxSize?>(
+            initialValue: boxSize,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Caja'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Sin caja')),
+              for (final size in BoxSize.values)
+                DropdownMenuItem(
+                  value: size,
+                  child: Text(
+                    boxes == null
+                        ? size.apiName
+                        : '${size.apiName} · ${formatCents(boxes.priceOf(size))}',
+                  ),
+                ),
+            ],
+            onChanged: onBoxSize,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.children});
 
@@ -759,11 +884,15 @@ class _VariantFields {
     : sku = TextEditingController(text: draft.sku),
       price = TextEditingController(
         text: draft.priceCents == null ? '' : centsToInput(draft.priceCents!),
+      ),
+      cost = TextEditingController(
+        text: draft.costCents == null ? '' : centsToInput(draft.costCents!),
       );
 
   final VariantDraft draft;
   final TextEditingController sku;
   final TextEditingController price;
+  final TextEditingController cost;
 
   /// E.g. "10 cm · Cristal"; empty for a product without options.
   String get label => draft.options.values.join(' · ');
@@ -777,11 +906,13 @@ class _VariantFields {
     // Stock is hidden for now: whatever was stored is kept as is.
     stock: draft.stock,
     isActive: draft.isActive,
+    costCents: parseCents(cost.text),
   );
 
   void dispose() {
     sku.dispose();
     price.dispose();
+    cost.dispose();
   }
 }
 
@@ -834,6 +965,20 @@ class _VariantEditor extends StatelessWidget {
                   child: TextFormField(
                     controller: fields.price,
                     decoration: dense('Precio (€)', hint: 'Por defecto'),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    validator: (v) =>
+                        (v ?? '').trim().isNotEmpty && parseCents(v!) == null
+                        ? 'No válido'
+                        : null,
+                  ),
+                ),
+                SizedBox(
+                  width: 140,
+                  child: TextFormField(
+                    controller: fields.cost,
+                    decoration: dense('Coste (€)', hint: 'Por defecto'),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),

@@ -1,3 +1,5 @@
+import 'costs.dart';
+
 /// A list the customer picks one value from (e.g. "Color del lazo": Rojo,
 /// Azul). Unlike variants it has no price or stock of its own.
 class ChoiceField {
@@ -30,6 +32,9 @@ class Product {
     this.isFeatured = false,
     this.variants = const [],
     this.images = const [],
+    this.costCents,
+    this.supplierId,
+    this.boxSize,
   });
 
   final String id;
@@ -52,6 +57,14 @@ class Product {
   final bool isFeatured;
   final List<ProductVariant> variants;
   final List<ProductImage> images;
+
+  /// What it costs the shop (admin only; the store never gets it). A
+  /// variant's own cost wins, like the price.
+  final int? costCents;
+  final String? supplierId;
+
+  /// Box it's packed in: one per article of an order.
+  final BoxSize? boxSize;
 
   String? get coverUrl => images.isEmpty ? null : images.first.url;
 
@@ -131,6 +144,9 @@ class Product {
       isFeatured: json['is_featured'] as bool? ?? false,
       variants: variants,
       images: images,
+      costCents: json['cost_cents'] as int?,
+      supplierId: json['supplier_id'] as String?,
+      boxSize: BoxSize.fromApi(json['box_size'] as String?),
     );
   }
 
@@ -147,6 +163,9 @@ class Product {
     'choice_fields': [for (final field in choiceFields) field.toJson()],
     'is_active': isActive,
     'is_featured': isFeatured,
+    'cost_cents': costCents,
+    'supplier_id': supplierId,
+    'box_size': boxSize?.apiName,
   };
 }
 
@@ -161,6 +180,7 @@ class ProductVariant {
     this.stock,
     this.position = 0,
     this.isActive = true,
+    this.costCents,
   });
 
   final String id;
@@ -179,6 +199,9 @@ class ProductVariant {
   final int position;
   final bool isActive;
 
+  /// Its own cost (admin only); `null` = the product's.
+  final int? costCents;
+
   bool get tracksStock => stock != null;
   bool get isInStock => stock == null || stock! > 0;
 
@@ -196,6 +219,7 @@ class ProductVariant {
     stock: json['stock'] as int?,
     position: json['position'] as int? ?? 0,
     isActive: json['is_active'] as bool? ?? true,
+    costCents: json['cost_cents'] as int?,
   );
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
+import '../models/costs.dart';
 import '../models/coupon.dart';
 import '../models/export_columns.dart';
 import '../models/order.dart';
@@ -100,6 +101,10 @@ class OrderRepository {
         }),
       );
 
+  /// What the order cost the shop (admin only).
+  Future<OrderCosts> fetchOrderCosts(String orderId) async =>
+      OrderCosts.fromJson(await _api.get('/api/admin/orders/$orderId/costs'));
+
   /// Counts and sales for the admin "Resumen" page.
   Future<OrderStats> fetchStats(SummaryPeriod period) async =>
       OrderStats.fromJson(
@@ -170,6 +175,14 @@ final adminOrderStatsProvider =
     FutureProvider.family<OrderStats, SummaryPeriod>((ref, period) {
       return ref.watch(orderRepositoryProvider).fetchStats(period);
     });
+
+/// What an order cost the shop (admin order page).
+final adminOrderCostsProvider = FutureProvider.family<OrderCosts, String>((
+  ref,
+  orderId,
+) {
+  return ref.watch(orderRepositoryProvider).fetchOrderCosts(orderId);
+});
 
 final orderProvider = FutureProvider.family<Order?, String>((ref, id) {
   return ref.watch(orderRepositoryProvider).fetchOrder(id);

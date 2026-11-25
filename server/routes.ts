@@ -3,6 +3,7 @@ import { corsHeaders, readBody, Reply } from './http';
 import { Router } from './router';
 import * as cart from './services/cart';
 import * as catalog from './services/catalog';
+import * as costs from './services/costs';
 import * as coupons from './services/coupons';
 import * as categories from './services/categories';
 import * as orderEmails from './services/orderEmails';
@@ -170,6 +171,11 @@ export const router = new Router()
     const { columns } = await readBody(request, orderExport.exportColumnsSchema);
     return orderExport.saveExportColumns(columns);
   })
+  // What an order cost the shop: each article, its box and the suppliers' transport.
+  .get('/api/admin/orders/:id/costs', async ({ request, params }) => {
+    await requireAdmin(request);
+    return costs.getOrderCosts(params.id);
+  })
   .patch('/api/admin/orders/:id', async ({ request, params }) => {
     const admin = await requireAdmin(request);
     return orders.adminUpdateOrder(admin, params.id, await readBody(request, orders.adminUpdateOrderSchema));
@@ -267,6 +273,33 @@ export const router = new Router()
     await requireAdmin(request);
     const { is_active } = await readBody(request, coupons.patchCouponSchema);
     return coupons.setCouponActive(params.id, is_active);
+  })
+
+  // --- Admin: costs (box prices and suppliers, in Ajustes) -------------------
+  .get('/api/admin/cost-settings', async ({ request }) => {
+    await requireAdmin(request);
+    return costs.getCostSettings();
+  })
+  .put('/api/admin/cost-settings', async ({ request }) => {
+    await requireAdmin(request);
+    return costs.saveCostSettings(await readBody(request, costs.costSettingsSchema));
+  })
+  .get('/api/admin/suppliers', async ({ request }) => {
+    await requireAdmin(request);
+    return costs.listSuppliers();
+  })
+  .post('/api/admin/suppliers', async ({ request }) => {
+    await requireAdmin(request);
+    return new Reply(await costs.createSupplier(await readBody(request, costs.supplierSchema)), 201);
+  })
+  .put('/api/admin/suppliers/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    return costs.updateSupplier(params.id, await readBody(request, costs.supplierSchema));
+  })
+  .delete('/api/admin/suppliers/:id', async ({ request, params }) => {
+    await requireAdmin(request);
+    await costs.deleteSupplier(params.id);
+    return new Reply(null, 204);
   })
 
   // --- Admin: settings ------------------------------------------------------
