@@ -9,6 +9,7 @@ import '../../models/order_stats.dart';
 import '../../repositories/order_repository.dart';
 import '../../widgets/common.dart';
 import 'admin_orders_screen.dart';
+import 'export_columns_dialog.dart';
 
 /// Admin "Resumen": orders in progress by status, and figures for past orders
 /// (per month, best sellers) over a chosen period.
@@ -102,7 +103,18 @@ class _AdminSummaryScreenState extends ConsumerState<AdminSummaryScreen> {
                 else ...[
                   _Totals(summary),
                   const SizedBox(height: 24),
-                  Text('Por mes', style: textTheme.titleLarge),
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('Por mes', style: textTheme.titleLarge),
+                      TextButton.icon(
+                        onPressed: () => showExportColumnsDialog(context),
+                        icon: const Icon(Icons.view_column_outlined),
+                        label: const Text('Columnas del Excel'),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   _MonthsTable(summary.months),
                   if (summary.topProducts.isNotEmpty) ...[

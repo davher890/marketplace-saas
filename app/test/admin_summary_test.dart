@@ -176,6 +176,7 @@ void main() {
       expect(find.text('Noviembre 2026'), findsOneWidget);
       expect(find.text('Galletas de mantequilla'), findsOneWidget);
       expect(find.text('Envío 1 · Recogida 1'), findsOneWidget);
+      expect(find.text('Columnas del Excel'), findsOneWidget);
     });
 
     testWidgets('a status card opens the list filtered by it', (tester) async {
