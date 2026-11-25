@@ -13,6 +13,7 @@ class AdminProductsScreen extends ConsumerStatefulWidget {
     super.key,
     this.onlyUncategorized = false,
     this.onlyWithoutPhoto = false,
+    this.onlyWithoutCost = false,
   });
 
   /// From `?sin_categoria=1` (the warnings' "Revisar" button).
@@ -20,6 +21,9 @@ class AdminProductsScreen extends ConsumerStatefulWidget {
 
   /// From `?sin_foto=1`.
   final bool onlyWithoutPhoto;
+
+  /// From `?sin_coste=1`.
+  final bool onlyWithoutCost;
 
   @override
   ConsumerState<AdminProductsScreen> createState() =>
@@ -36,14 +40,22 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
         ref.watch(uncategorizedProductsProvider).value?.length ?? 0;
     final withoutPhotoCount =
         ref.watch(productsWithoutPhotoProvider).value?.length ?? 0;
+    final withoutCostCount =
+        ref.watch(productsWithoutCostProvider).value?.length ?? 0;
     final onlyUncategorized = widget.onlyUncategorized;
     final onlyWithoutPhoto = widget.onlyWithoutPhoto;
+    final onlyWithoutCost = widget.onlyWithoutCost;
 
     /// The list's address with one filter turned on or off.
-    String filterPath({bool? uncategorized, bool? withoutPhoto}) {
+    String filterPath({
+      bool? uncategorized,
+      bool? withoutPhoto,
+      bool? withoutCost,
+    }) {
       final query = [
         if (uncategorized ?? onlyUncategorized) 'sin_categoria=1',
         if (withoutPhoto ?? onlyWithoutPhoto) 'sin_foto=1',
+        if (withoutCost ?? onlyWithoutCost) 'sin_coste=1',
       ];
       return query.isEmpty
           ? '/admin/products'
@@ -85,8 +97,10 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
             ),
             if (onlyUncategorized ||
                 onlyWithoutPhoto ||
+                onlyWithoutCost ||
                 uncategorizedCount > 0 ||
-                withoutPhotoCount > 0) ...[
+                withoutPhotoCount > 0 ||
+                withoutCostCount > 0) ...[
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -106,6 +120,13 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                       onSelected: (selected) =>
                           context.go(filterPath(withoutPhoto: selected)),
                     ),
+                  if (onlyWithoutCost || withoutCostCount > 0)
+                    FilterChip(
+                      label: Text('Sin coste ($withoutCostCount)'),
+                      selected: onlyWithoutCost,
+                      onSelected: (selected) =>
+                          context.go(filterPath(withoutCost: selected)),
+                    ),
                 ],
               ),
             ],
@@ -119,6 +140,7 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                       (p) =>
                           (!onlyUncategorized || p.categoryIds.isEmpty) &&
                           (!onlyWithoutPhoto || p.images.isEmpty) &&
+                          (!onlyWithoutCost || p.missingCost) &&
                           (_search.isEmpty ||
                               p.name.toLowerCase().contains(_search)),
                     )
@@ -128,7 +150,7 @@ class _AdminProductsScreenState extends ConsumerState<AdminProductsScreen> {
                     padding: const EdgeInsets.all(32),
                     child: Center(
                       child: Text(
-                        onlyUncategorized || onlyWithoutPhoto
+                        onlyUncategorized || onlyWithoutPhoto || onlyWithoutCost
                             ? 'Ningún producto cumple el filtro.'
                             : 'No hay productos.',
                       ),

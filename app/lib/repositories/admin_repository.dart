@@ -230,6 +230,14 @@ final productsWithoutPhotoProvider = FutureProvider<List<Product>>((ref) async {
   return products.where((p) => p.images.isEmpty).toList();
 });
 
+/// Products with something sold at no cost (see [Product.missingCost]): the
+/// orders' costs and profit leave it out. The admin shows a warning while
+/// there are any.
+final productsWithoutCostProvider = FutureProvider<List<Product>>((ref) async {
+  final products = await ref.watch(adminProductsProvider.future);
+  return products.where((p) => p.missingCost).toList();
+});
+
 final adminCategoriesProvider = FutureProvider<List<Category>>((ref) {
   ref.watch(currentUserProvider);
   return ref.watch(adminRepositoryProvider).fetchAllCategories();
