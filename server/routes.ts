@@ -160,6 +160,16 @@ export const router = new Router()
     await requireAdmin(request);
     return orderExport.monthOrdersCsvResponse(orderExport.parseMonth(query.get('month')), corsHeaders(request));
   })
+  // Which columns the monthly file has, and in what order ("Columnas del Excel").
+  .get('/api/admin/orders/export-columns', async ({ request }) => {
+    await requireAdmin(request);
+    return orderExport.exportColumnsSetting();
+  })
+  .put('/api/admin/orders/export-columns', async ({ request }) => {
+    await requireAdmin(request);
+    const { columns } = await readBody(request, orderExport.exportColumnsSchema);
+    return orderExport.saveExportColumns(columns);
+  })
   .patch('/api/admin/orders/:id', async ({ request, params }) => {
     const admin = await requireAdmin(request);
     return orders.adminUpdateOrder(admin, params.id, await readBody(request, orders.adminUpdateOrderSchema));

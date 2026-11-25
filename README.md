@@ -187,7 +187,7 @@ coupons ─1:N─ orders (coupon_id, coupon_code, discount_cents)
 | Coupons: a unique code (stored in capitals, typed in any case), valid from one day to another, both included, in Spain's calendar, and switchable off. *Una vez por usuario*: each customer can use it on one order (cancelled orders don't count). *Una vez por compra*: usable on any number of orders. An order takes one coupon at most. The discount is an amount in euros, a percentage, or free shipping, and it comes off the final price (products + shipping) without going below 0. The API checks the coupon again and works out the discount when the order is placed; a coupon that gives nothing (free shipping on a pickup order) is refused. Orders keep the code and the amount (`coupon_code`, `discount_cents`, `total = subtotal + shipping - discount`), shown in the order, the emails and the CSV export | `coupons.ts`, `orders.ts` |
 | New order: a push notification to every admin's Android device, and an email to the shop's mailbox and every admin (reply goes to the customer) and to the customer. A failed notification or email never fails the checkout; devices FCM no longer knows are removed | `push.ts`, `orderEmails.ts` |
 | Status change: the customer gets an email for in preparation, shipped, delivered and cancelled (not for going back to received), and another when the order is marked paid | `orders.ts`, `orderEmails.ts` |
-| Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone, each month downloadable as a CSV file: a browser download on the web, the share sheet on Android) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
+| Admin summary (*Resumen*): orders received / in preparation / shipped, unpaid orders and their total, and for the chosen period (this month, last 3 months, this year, all) the amount billed (paid, not cancelled orders), average order, delivered / cancelled, shipping vs pickup, a table per month (Spain's time zone, each month downloadable as a CSV file: a browser download on the web, the share sheet on Android; *Columnas del Excel* picks which columns the file has and in what order, saved for the shop in `shop_settings.order_export_columns`) and the 5 best sellers. The order list is split into *En curso*, *Históricos* and *Sin pagar* (`?vista=`, `?estado=`) | `orderSummary.ts`, app `admin_summary_screen.dart` |
 | Profile: name and phone editable (phone validated); email fixed | `profiles.ts` |
 | Password change: needs the current password, except within an hour of opening a recovery link. Supabase then ends every session of the user, so the API returns a new one for this device. Deleting the account also asks for the password | `sessions.ts`, `profiles.ts` |
 
@@ -219,6 +219,8 @@ coupons ─1:N─ orders (coupon_id, coupon_code, discount_cents)
    - `…11_online_payment.sql`: online payment (in its own pull request).
    - `…12_coupons.sql`: discount coupons, and the coupon and discount of each
      order.
+   - `…13_order_export_columns.sql`: the columns of the monthly orders file
+     chosen in *Columnas del Excel*.
 
    All but the first are safe to run more than once. Once `…09` has run, don't
    re-run the earlier ones (they would create empty tables in `public` again);
@@ -560,7 +562,9 @@ needs the admin role.
 | POST | `/api/orders/:id/cancel` | Cancel an order that is still received and not paid (admins: any order). |
 | GET | `/api/admin/orders?status=&paid=` | All orders; `status` takes one or several (`delivered,cancelled`), `paid` is `true` or `false`. |
 | GET | `/api/admin/orders/summary?period=month\|quarter\|year\|all` | Figures for the *Resumen* page. |
-| GET | `/api/admin/orders/export?month=2026-11` | That month's orders (Spain's calendar) as a CSV file for Excel in Spanish: one row per order, `;` between columns, decimal commas, UTF-8 with BOM. Text a customer typed that starts with `=`, `+`, `-` or `@` gets a leading `'` so Excel doesn't treat it as a formula. |
+| GET | `/api/admin/orders/export?month=2026-11` | That month's orders (Spain's calendar) as a CSV file for Excel in Spanish: one row per order, with the columns chosen in *Columnas del Excel* (every column if none), `;` between columns, decimal commas, UTF-8 with BOM. Text a customer typed that starts with `=`, `+`, `-` or `@` gets a leading `'` so Excel doesn't treat it as a formula. |
+| GET | `/api/admin/orders/export-columns` | Every column the monthly file can have (`available`: key and label, default order) and the chosen ones in order (`selected`). |
+| PUT | `/api/admin/orders/export-columns` | `{ "columns": ["order_number", "total", …] }`: the file's columns in order (at least one, no repeats). The default list is saved as `NULL`, so columns added later show up. |
 | PATCH | `/api/admin/orders/:id` | `{status?, paid?, admin_notes?}`. |
 | POST | `/api/devices` | Register an app install for push notifications: `{fid, platform: "android"}`. With a session it is linked to that user, without one to nobody. |
 | POST | `/api/admin/devices` | The same, for older app builds (admins only). |

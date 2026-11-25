@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/auth.dart';
 import '../models/coupon.dart';
+import '../models/export_columns.dart';
 import '../models/order.dart';
 import '../models/order_stats.dart';
 import 'api_client.dart';
@@ -85,6 +86,19 @@ class OrderRepository {
   /// The orders placed in [month] ("2026-11") as a CSV file (admin only).
   Future<Uint8List> exportMonth(String month) =>
       _api.getBytes('/api/admin/orders/export', query: {'month': month});
+
+  /// Which columns the monthly file has, and in what order (admin only).
+  Future<ExportColumns> fetchExportColumns() async => ExportColumns.fromJson(
+    await _api.get('/api/admin/orders/export-columns'),
+  );
+
+  /// Saves the columns of the monthly file, in order (admin only).
+  Future<ExportColumns> saveExportColumns(List<String> columns) async =>
+      ExportColumns.fromJson(
+        await _api.put('/api/admin/orders/export-columns', {
+          'columns': columns,
+        }),
+      );
 
   /// Counts and sales for the admin "Resumen" page.
   Future<OrderStats> fetchStats(SummaryPeriod period) async =>
